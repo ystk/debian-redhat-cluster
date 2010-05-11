@@ -1,0 +1,237 @@
+.TH CLUSTER.CONF 5 2010-01-12 cluster cluster
+
+.SH NAME
+cluster.conf \- configuration file for cman and related daemons
+
+.SH SYNOPSIS
+.B /etc/cluster/cluster.conf
+
+.SH DESCRIPTION
+When
+.BR cman_tool (8)
+starts the
+.BR corosync (8)
+daemon, the cluster.conf data is read into the corosync in-memory
+database (confdb).  The configuration is used by corosync,
+cman and other related cluster daemons and programs.  When cman
+configures corosync with cluster.conf, the
+.BR corosync.conf (5)
+file is not used.
+
+A basic cluster configuration is described below.
+Configuration options for other daemons/programs are described in
+their own man pages.
+.BR ccs_tool (8)
+can be used to do some basic cluster.conf editing.
+
+The cluster.rng schema is used to validate cluster.conf.  Unrecognized
+items will produce a warning during cluster startup, and invalid xml
+structure will cause the cluster startup to fail.  See
+.BR ccs_config_validate (8)
+and
+.BR ccs_config_dump (8).
+
+.SS Cluster
+The top level
+.B cluster
+section contains all other sections and has two required attributes:
+.TP 8
+.B name
+The name of the cluster can be up to 15 characters long (16 including
+terminating null).  It is important that this name be unique among
+clusters on the same network.
+.TP 8
+.B config_version
+The config_version specifies the revision level of the file and should be
+increased each time the file is updated.
+.P
+.nf
+<cluster name="alpha" config_version="1">
+</cluster>
+.fi
+
+.SS Cluster Nodes
+The set of nodes that make up the cluster are defined in the
+.B clusternodes
+section which contains multiple
+.B clusternode
+sections.  A clusternode has two required attributes:
+.TP 8
+.B name
+The node name should correspond to the hostname on the network interface
+to be used for cluster communication.
+.TP 8
+.B nodeid
+The node id must be greater than zero and unique.
+.P
+.nf
+<cluster name="alpha" config_version="1">
+        <clusternodes>
+        <clusternode name="node-01" nodeid="1">
+        </clusternode>
+
+        <clusternode name="node-02" nodeid="2">
+        </clusternode>
+
+        <clusternode name="node-03" nodeid="3">
+        </clusternode>
+        </clusternodes>
+</cluster>
+.fi
+
+.SS Logging
+Cluster daemons use a common
+.B logging
+section to configure their loggging behavior.
+.P
+.nf
+<cluster name="alpha" config_version="1">
+        <logging/>
+</cluster>
+.fi
+.P
+
+Global settings apply to all:
+.P
+.nf
+<logging debug="on"/>
+.fi
+.P
+
+Per-daemon
+.B logging_daemon
+subsections override the global settings.
+Daemon names that can be configured include: corosync, qdiskd, groupd, fenced,
+dlm_controld, gfs_controld, rgmanager.
+.P
+.nf
+<logging>
+        <logging_daemon name="qdiskd" debug="on"/>
+        <logging_daemon name="fenced" debug="on"/>
+</logging>
+.fi
+.P
+
+Corosync daemon settings apply to all corosync subsystems by default, but
+subsystems can also be configured individually.  These include CLM, CPG, MAIN,
+SERV, CMAN, TOTEM, QUORUM, CONFDB, CKPT, EVT.
+.P
+.nf
+<logging>
+        <logging_daemon name="corosync" subsys="QUORUM" debug="on"/>
+        <logging_daemon name="corosync" subsys="CONFDB" debug="on"/>
+</logging>
+.fi
+.P
+
+The attributes available at global, daemon and subsystem levels are:
+
+.TP 8
+.B to_syslog
+enable/disable messages to syslog (yes/no), default "yes"
+
+.TP 8
+.B to_logfile
+enable/disable messages to log file (yes/no), default "yes"
+
+.TP 8
+.B syslog_facility
+facility used for syslog messages, default "daemon"
+
+.TP 8
+.B syslog_priority
+messages at this level and up will be sent to syslog, default "info"
+
+.TP 8
+.B logfile_priority
+messages at this level and up will be written to log file, default "info"
+
+.TP 8
+.B logfile "\     "
+the log file name, default /var/log/cluster/<daemon>.log
+
+.TP 8
+.B debug="on"
+a shortcut for logfile_priority="debug"
+
+.SH EXAMPLE
+An explicit configuration for the default settings would be:
+.P
+.nf
+<logging to_syslog="yes" to_logfile="yes" syslog_facility="daemon"
+         syslog_priority="info" logfile_priority="info">
+    <logging_daemon name="qdiskd"
+             logfile="/var/log/cluster/qdiskd.log"/>
+    <logging_daemon name="fenced"
+             logfile="/var/log/cluster/fenced.log"/>
+    <logging_daemon name="dlm_controld"
+             logfile="/var/log/cluster/dlm_controld.log"/>
+    <logging_daemon name="gfs_controld"
+             logfile="/var/log/cluster/gfs_controld.log"/>
+    <logging_daemon name="rgmanager"
+             logfile="/var/log/cluster/rgmanager.log"/>
+    <logging_daemon name="corosync"
+             logfile="/var/log/cluster/corosync.log"/>
+</logging>
+.fi
+.P
+
+To include debug messages (and above) from all daemons in their default
+log files, either of the following which are equivalent:
+.P
+.nf
+<logging debug="on"/>
+<logging logfile_priority="debug"/>
+.fi
+.P
+
+To exclude all log messages from syslog:
+.P
+.nf
+<logging to_syslog="no"/>
+.fi
+.P
+
+To disable logging to all log files:
+.P
+.nf
+<logging to_file="no"/>
+.fi
+.P
+
+To include debug messages (and above) from all daemons in syslog:
+.P
+.nf
+<logging syslog_priority="debug"/>
+.fi
+.P
+
+To limit syslog messages to error (and above), keeping info (and above) in
+log files (this logfile_priority setting is the default so could be omitted):
+.P
+.nf
+<logging syslog_priority="error" logfile_priority="info"/>
+.fi
+.P
+
+.SH FILES
+.TP
+.I /etc/cluster/cluster.conf
+standard location of cluster configuration file
+.TP
+.I /usr/share/cluster/cluster.rng
+standard location of cluster.conf schema
+
+.SH SEE ALSO
+.BR ccs_tool (8),
+.BR ccs_config_dump (8),
+.BR ccs_config_validate (8),
+.BR cman_tool (8),
+.BR cman (5),
+.BR qdisk (5),
+.BR fenced (8),
+.BR fence_node (8),
+.BR dlm_controld (8),
+.BR gfs_controld (8),
+.BR rgmanager (8)
+

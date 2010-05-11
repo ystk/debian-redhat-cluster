@@ -1,0 +1,90 @@
+cluster3 minimal setup and usage
+
+cluster configuration
+---------------------
+
+Create /etc/cluster/cluster.conf and copy it to all nodes.
+
+Below is a minimal cluster.conf file using manual fencing.  The node names
+should resolve to the address on the network interface you want to use for
+cluster communication.
+
+<?xml version="1.0"?>
+<cluster name="alpha" config_version="1">
+
+<clusternodes>
+<clusternode name="node-01" nodeid="1"/>
+<clusternode name="node-02" nodeid="2"/>
+<clusternode name="node-03" nodeid="3"/>
+</clusternodes>
+
+</cluster>
+
+
+cluster start
+-------------
+
+Use the init script on all nodes:
+
+> service cman start
+
+Or, minimal manual steps:
+
+> modprobe configfs
+> modprobe dlm
+> modprobe gfs2 (if using gfs2)
+> mount -t configfs none /sys/kernel/config
+> cman_tool join
+> fenced
+> dlm_controld
+> gfs_controld (if using gfs2)
+> fence_tool join
+
+
+using clvm
+----------
+
+Use the init script on all nodes:
+
+> service clvmd start
+
+Or, manually:
+
+> clvmd
+> vgscan
+> vgchange -aly
+
+
+using rgmanager
+---------------
+
+Use the init script on all nodes:
+
+> service rgmanager start
+
+Or, manually:
+
+> rgmanager
+
+Create services/resources to be managed in cluster.conf.
+
+
+using gfs2
+----------
+
+Create new file systems, using the cluster name from cluster.conf.  Pick a
+unique name for each fs and select a number of journals greater than or equal
+to the number of nodes that will mount the fs.
+
+> mkfs.gfs2 -p lock_dlm -t <clustername>:<fsname> -j <#journals> <blockdev>
+
+Use the gfs2 init script to automate mounting gfs2 fs's listed in /etc/fstab:
+
+> service gfs2 start
+
+Or, manually:
+
+> mount -t gfs2 <blockdev> <mountpoint>
+
+(Replace "gfs2" with "gfs" everywhere above to use gfs instead of gfs2.)
+

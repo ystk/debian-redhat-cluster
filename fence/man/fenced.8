@@ -1,0 +1,345 @@
+.TH FENCED 8 2009-12-21 cluster cluster
+
+.SH NAME
+fenced \- the I/O Fencing daemon
+
+.SH SYNOPSIS
+.B fenced
+[OPTIONS]
+
+.SH DESCRIPTION
+The fencing daemon, fenced, fences cluster nodes that have failed.
+Fencing a node generally means rebooting it or otherwise preventing it
+from writing to storage, e.g. disabling its port on a SAN switch.  Fencing
+involves interacting with a hardware device, e.g. network power switch,
+SAN switch, storage array.  Different "fencing agents" are run by fenced
+to interact with various hardware devices.
+
+Software related to sharing storage among nodes in a cluster, e.g. GFS,
+usually requires fencing to be configured to prevent corruption of the
+storage in the presence of node failure and recovery.  GFS will not allow
+a node to mount a GFS file system unless the node is running fenced.
+
+Once started, fenced waits for the
+.BR fence_tool (8)
+join command to be run, telling it to join the fence domain: a group of
+nodes that will fence group members that fail.  When the cluster does not
+have quorum, fencing operations are postponed until quorum is restored.
+If a failed fence domain member is reset and rejoins the cluster before
+the remaining domain members have fenced it, the fencing is no longer
+needed and will be skipped.
+
+fenced uses the corosync cluster membership system, it's closed process
+group library (libcpg), and the cman quorum and configuration libraries
+(libcman, libccs).
+
+The cman init script usually starts the fenced daemon and runs fence_tool
+join and leave.
+
+.SS Node failure
+
+When a fence domain member fails, fenced runs an agent to fence it.  The
+specific agent to run and the agent parameters are all read from the
+cluster.conf file (using libccs) at the time of fencing.  The fencing
+operation against a failed node is not considered complete until the
+exec'ed agent exits.  The exit value of the agent indicates the success or
+failure of the operation.  If the operation failed, fenced will retry
+(possibly with a different agent, depending on the configuration) until
+fencing succeeds.  Other systems such as DLM and GFS wait for fencing to
+complete before starting their own recovery for a failed node.
+Information about fencing operations will also appear in syslog.
+
+When a domain member fails, the actual fencing operation can be delayed by
+a configurable number of seconds (cluster.conf post_fail_delay or -f).
+Within this time, the failed node could be reset and rejoin the cluster to
+avoid being fenced.  This delay is 0 by default to minimize the time that
+other systems are blocked.
+
+.SS Domain startup
+
+When the fence domain is first created in the cluster (by the first node
+to join it) and subsequently enabled (by the cluster gaining quorum) any
+nodes listed in cluster.conf that are not presently members of the
+corosync cluster are fenced.  The status of these nodes is unknown, and to
+be safe they are assumed to need fencing.  This startup fencing can be
+disabled, but it's only truly safe to do so if an operator is present to
+verify that no cluster nodes are in need of fencing.
+
+The following example illustrates why startup fencing is important.  Take
+a three node cluster with nodes A, B and C; all three have a GFS file
+system mounted.  All three nodes experience a low-level kernel hang at
+about the same time.  A watchdog triggers a reboot on nodes A and B, but
+not C.  A and B reboot, form the cluster again, gain quorum, join the
+fence domain, _don't_ fence node C which is still hung and unresponsive,
+and mount the GFS fs again.  If C were to come back to life, it could
+corrupt the fs.  So, A and B need to fence C when they reform the fence
+domain since they don't know the state of C.  If C _had_ been reset by a
+watchdog like A and B, but was just slow in rebooting, then A and B might
+be fencing C unnecessarily when they do startup fencing.
+
+The first way to avoid fencing nodes unnecessarily on startup is to ensure
+that all nodes have joined the cluster before any of the nodes start the
+fence daemon.  This method is difficult to automate.
+
+A second way to avoid fencing nodes unnecessarily on startup is using the
+cluster.conf post_join_delay setting (or -j option).  This is the number
+of seconds fenced will delay before actually fencing any victims after
+nodes join the domain.  This delay gives nodes that have been tagged for
+fencing a chance to join the cluster and avoid being fenced.  A delay of
+-1 here will cause the daemon to wait indefinitely for all nodes to join
+the cluster and no nodes will actually be fenced on startup.
+
+To disable fencing at domain-creation time entirely, the cluster.conf
+clean_start setting (or -c option) can be used to declare that all nodes
+are in a clean or safe state to start.  This setting/option should not
+generally be used since it risks not fencing a node that needs it, which
+can lead to corruption in other applications (like GFS) that depend on
+fencing.
+
+Avoiding unnecessary fencing at startup is primarily a concern when nodes
+are fenced by power cycling.  If nodes are fenced by disabling their SAN
+access, then unnecessarily fencing a node is usually less disruptive.
+
+.SS Fencing override
+
+If a fencing device fails, the agent may repeatedly return errors as
+fenced tries to fence a failed node.  In this case, the admin can manually
+reset the failed node, and then use
+.BR fence_ack_manual (8)
+to tell fenced to continue without fencing the node.
+
+.SH OPTIONS
+Command line options override a corresponding setting in cluster.conf.
+
+.TP
+.B \-D
+Enable debugging to stderr and don't fork.
+.br
+See also
+.B fence_tool dump
+in 
+.BR fence_tool (8).
+.TP
+.B \-L
+Enable debugging to log file.
+.br
+See also
+.B logging
+in 
+.BR cluster.conf (5).
+.TP
+.BI \-g " num"
+groupd compatibility mode, 0 off, 1 on. Default 0.
+.TP
+.BI \-r " path"
+Register a directory that needs to be empty for the daemon to start.  Use
+a dash (\-) to skip default directories /sys/fs/gfs, /sys/fs/gfs2,
+/sys/kernel/dlm.
+.TP
+.B \-c
+All nodes are in a clean state to start. Do no startup fencing.
+.TP
+.B \-s
+Skip startup fencing of nodes with no defined fence methods.
+.TP
+.BI \-j " secs"
+Post-join fencing delay. Default 6.
+.TP
+.BI \-f " secs"
+Post-fail fencing delay. Default 0.
+.TP
+.BI \-R " secs"
+Number of seconds to wait for a manual override after a failed fencing
+attempt before the next attempt. Default 3.
+.TP
+.BI \-O " path"
+Location of a FIFO used for communication between fenced and fence_ack_manual.
+.TP
+.B \-h
+Print a help message describing available options, then exit.
+.TP
+.B \-V
+Print program version information, then exit.
+
+.SH FILES
+.BR cluster.conf (5)
+is usually located at /etc/cluster/cluster.conf.  It is not read directly.
+Other cluster components load the contents into memory, and the values are
+accessed through the libccs library.
+
+Configuration options for fenced are added to the <fence_daemon /> section
+of cluster.conf, within the top level <cluster> section.
+
+.TP
+.B post_join_delay
+is the number of seconds the daemon will wait before fencing any victims
+after a node joins the domain.  Default 6.
+
+<fence_daemon post_join_delay="6"/>
+
+.TP
+.B post_fail_delay
+is the number of seconds the daemon will wait before fencing any victims
+after a domain member fails.  Default 0.
+
+<fence_daemon post_fail_delay="0"/>
+
+.TP
+.B clean_start
+is used to prevent any startup fencing the daemon might do.
+It indicates that the daemon should assume all nodes are in a clean state
+to start. Default 0.
+
+<fence_daemon clean_start="0"/>
+
+.TP
+.B override_path
+is the location of a FIFO used for communication between fenced and
+fence_ack_manual. Default shown.
+
+<fence_daemon override_path="/var/run/cluster/fenced_override"/>
+
+.TP
+.B override_time
+is the number of seconds to wait for administrator intervention
+between fencing attempts following fence agent failures. Default 3.
+
+<fence_daemon override_time="3"/>
+
+.SS Per-node fencing settings
+
+The per-node fencing configuration is partly dependant on the specific
+agent/hardware being used.  The general framework begins like this:
+
+.nf
+<clusternodes>
+
+<clusternode name="node1" nodeid="1">
+        <fence>
+        </fence>
+</clusternode>
+
+<clusternode name="node2" nodeid="2">
+        <fence>
+        </fence>
+</clusternode>
+
+</clusternodes>
+.fi
+
+The simple fragment above is a valid configuration: there is no way to
+fence these nodes.  If one of these nodes is in the fence domain and
+fails, fenced will repeatedly fail in its attempts to fence it.  The admin
+will need to manually reset the failed node and then use fence_ack_manual
+to tell fenced to continue without fencing it (see override above).
+
+There is typically a single method used to fence each node (the name given
+to the method is not significant).  A method refers to a specific device
+listed in the separate <fencedevices> section, and then lists any
+node-specific parameters related to using the device.
+
+.nf
+<clusternodes>
+
+<clusternode name="node1" nodeid="1">
+        <fence>
+        <method name="1">
+        <device name="myswitch" foo="x"/>
+        </method>
+        </fence>
+</clusternode>
+
+<clusternode name="node2" nodeid="2">
+        <fence>
+        <method name="1">
+        <device name="myswitch" foo="y"/>
+        </method>
+        </fence>
+</clusternode>
+
+</clusternodes>
+.fi
+
+.SS Fence device settings
+
+This section defines properties of the devices used to fence nodes.  There
+may be one or more devices listed.  The per-node fencing sections above
+reference one of these fence devices by name.
+
+.nf
+<fencedevices>
+        <fencedevice name="myswitch" agent="..." something="..."/>
+</fencedevices>
+.fi
+
+.SS Multiple methods for a node
+
+In more advanced configurations, multiple fencing methods can be defined
+for a node.  If fencing fails using the first method, fenced will try the
+next method, and continue to cycle through methods until one succeeds.
+
+.nf
+<clusternode name="node1" nodeid="1">
+        <fence>
+        <method name="1">
+        <device name="myswitch" foo="x"/>
+        </method>
+        <method name="2">
+        <device name="another" bar="123"/>
+        </method>
+        </fence>
+</clusternode>
+
+<fencedevices>
+        <fencedevice name="myswitch" agent="..." something="..."/>
+        <fencedevice name="another" agent="..."/>
+</fencedevices>
+.fi
+
+.SS Dual path, redundant power
+
+Sometimes fencing a node requires disabling two power ports or two i/o
+paths.  This is done by specifying two or more devices within a method.
+fenced will run the agent for the device twice, once for each device line,
+and both must succeed for fencing to be considered successful.
+
+.nf
+<clusternode name="node1" nodeid="1">
+        <fence>
+        <method name="1">
+        <device name="sanswitch1" port="11"/>
+        <device name="sanswitch2" port="11"/>
+        </method>
+        </fence>
+</clusternode>
+.fi
+
+When using power switches to fence nodes with dual power supplies, the
+agents must be told to turn off both power ports before restoring power to
+either port.  The default off-on behavior of the agent could result in the
+power never being fully disabled to the node.
+
+.nf
+<clusternode name="node1" nodeid="1">
+        <fence>
+        <method name="1">
+        <device name="nps1" port="11" action="off"/>
+        <device name="nps2" port="11" action="off"/>
+        <device name="nps1" port="11" action="on"/>
+        <device name="nps2" port="11" action="on"/>
+        </method>
+        </fence>
+</clusternode>
+.fi
+
+.SS Hardware-specific settings
+
+Find documentation for configuring specific devices from the device
+agent's man page.
+
+.SH SEE ALSO
+.BR fence_tool (8),
+.BR fence_ack_manual (8),
+.BR fence_node (8),
+.BR cluster.conf (5)
+

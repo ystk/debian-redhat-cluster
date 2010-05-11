@@ -1,0 +1,60 @@
+.TH FENCE_TOOL 8 2009-12-21 cluster cluster
+
+.SH NAME
+fence_tool \- a utility for the fenced daemon
+
+.SH SYNOPSIS
+.B fence_tool
+[COMMAND] [OPTIONS]
+
+.SH DESCRIPTION
+This utility controls and queries the
+.BR fenced (8)
+daemon with the following commands:
+.TP
+.B join
+join the fence domain.
+.TP
+.B leave
+leave the fence domain.
+.TP
+.B dump
+print the fenced internal debug buffer ont stdout.
+.TP
+.B ls
+display internal fenced state.
+.P
+The leave command will not be sent to fenced if fence_tool detects that
+any instances of gfs or dlm are in use.
+
+.SH OPTIONS
+.TP
+.B \-n
+Show all node information in ls.
+.TP
+.BI \-t " seconds"
+Retry cman connection for this many seconds.
+0 none, -1 indefinite. Default 0.
+.TP
+.BI \-q " seconds"
+Delay join up to this many seconds for the cluster to have quorum.
+0 none, -1 indefinite. Default 0.
+.TP
+.BI \-m " seconds"
+Delay join up to this many seconds for all nodes in cluster.conf to be
+cluster members.
+0 none, -1 indefinite. Default 0.
+.TP
+.BI \-w " seconds"
+Wait up to this many seconds for the result of join or leave.
+0 none, -1 indefinite. Default 0.
+.TP
+.B \-h
+Print a help message describing available options, then exit.
+.TP
+.B \-V
+Print program version information, then exit.
+
+.SH SEE ALSO
+.BR fenced (8)
+

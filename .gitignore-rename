@@ -1,0 +1,15 @@
+make/defines.mk
+.configure.sh
+*.d
+*.o
+*.a
+*.so*
+*.lcrso
+*.po
+.*.*o.cmd
+.tmp_versions
+*.ko
+Module.symvers
+modules.order
+*.mod.c
+*.pc

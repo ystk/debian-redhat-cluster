@@ -1,0 +1,98 @@
+.TH DLM_TOOL 8 2009-01-20 cluster cluster
+
+.SH NAME
+dlm_tool \- a utility for the dlm and dlm_controld daemon
+
+.SH SYNOPSIS
+.B dlm_tool
+[COMMAND] [OPTIONS]
+[
+.I name
+]
+
+.SH DESCRIPTION
+.TP
+.B ls
+Display internal dlm_controld state about lockspaces.
+
+.TP
+.B dump
+Dump dlm_controld debug buffer.
+
+.TP
+.B log_plock
+Dump dlm_controld plock debug buffer.
+
+.TP
+.BI plocks " name"
+Dump posix locks from dlm_controld for the lockspace.
+
+.TP
+.BI lockdump " name"
+Minimal display of locks from the lockspace.
+
+.TP
+.BI lockdebug " name"
+Extended display of locks from the lockspace.
+
+.TP
+.BI join " name"
+Join a lockspace.
+
+.TP
+.BI leave " name"
+Leave a lockspace.
+
+.TP
+.BI deadlock_check " name"
+Start a deadlock detection cycle for the lockspace.
+
+.SH OPTIONS
+.TP
+.B \-n
+Show all node information in ls.
+
+.TP
+.BI \-d " num"
+Resource directory enabled (1) or disabled (0) during join. Default 0.
+
+.TP
+.BI \-e " num"
+Exclusive create off/on (0/1) in join. Default 0.
+
+.TP
+.BI \-f " num"
+FS memory allocation off/on (0/1) in join. Default 0.
+
+.TP
+.BI \-m " mode"
+The permission mode (in octal) of the lockspace device created by join.
+Default 0600.
+
+.TP
+.B \-M
+Dump MSTCPY locks in addition to locks held by local processes.
+
+.TP
+.B \-s
+Summary following lockdebug output (experimental, format may change).
+
+.TP
+.B \-v
+Verbose lockdebug output.
+
+.TP
+.B \-w
+Wide lockdebug output.
+
+.TP
+.B \-h
+Print a help message describing available options, then exit.
+
+.TP
+.B \-V
+Print program version information, then exit.
+
+.SH SEE ALSO
+.BR dlm_controld (8)
+

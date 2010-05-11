@@ -1,0 +1,142 @@
+#!/bin/bash
+#
+# chkconfig: - 99 01
+# description: Starts and stops Red Hat Service (resource group) Manager
+#
+#
+### BEGIN INIT INFO
+# Provides:		rgmanager
+# Required-Start:	cman
+# Required-Stop:	cman
+# Default-Start:
+# Default-Stop:
+# Short-Description:	Starts and stops Red Hat Service (resource group) Manager
+# Description:		Starts and stops Red Hat Service (resource group) Manager
+### END INIT INFO
+
+ID="Cluster Service Manager"
+RGMGRD="rgmanager"
+
+# set secure PATH
+PATH="/sbin:/bin:/usr/sbin:/usr/bin:@SBINDIR@"
+
+success()
+{
+	echo -ne "[  OK  ]\r"
+}
+
+failure()
+{
+	echo -ne "[FAILED]\r"
+}
+
+status()
+{
+	pid=$(pidof $1 2>/dev/null)
+	rtrn=$?
+	if [ $rtrn -ne 0 ]; then
+		echo "$1 is stopped"
+	else
+		echo "$1 (pid $pid) is running..."
+	fi
+	return $rtrn
+}
+
+# rpm based distros
+if [ -d /etc/sysconfig ]; then
+	[ -f @INITDDIR@/functions ] && . @INITDDIR@/functions
+	[ -f /etc/sysconfig/cluster ] && . /etc/sysconfig/cluster
+	[ -f /etc/sysconfig/rgmanager ] && . /etc/sysconfig/rgmanager
+	[ -z "$LOCK_FILE" ] && LOCK_FILE="/var/lock/subsys/rgmanager"
+fi
+
+# deb based distros
+if [ -d /etc/default ]; then
+	[ -f /etc/default/cluster ] && . /etc/default/cluster
+	[ -f /etc/default/rgmanager ] && . /etc/default/rgmanager
+	[ -z "$LOCK_FILE" ] && LOCK_FILE="/var/lock/rgmanager"
+fi
+
+#
+# Bring down the cluster on a node.
+#
+stop_cluster()
+{
+	kill -TERM $(pidof $RGMGRD)
+
+	# this unbreakable loop is meant to be done this way.
+	# there are resources that can take up to several minutes
+	# to stop and there is no "right timeout".
+	while status $RGMGRD > /dev/null 2>&1; do
+		sleep 1
+	done
+}
+
+rtrn=0
+
+case "$1" in
+start)
+	echo -n "Starting $ID: "
+
+	# most recent distributions use tmpfs for /var/run
+	# to avoid to clean it up on every boot.
+	# they also assume that init scripts will create
+	# required subdirectories for proper operations
+	mkdir -p /var/run/cluster
+
+	if status $RGMGRD > /dev/null 2>&1; then
+		success
+	else
+		if $RGMGRD $RGMGR_OPTS; then
+			touch $LOCK_FILE
+			success
+		else
+			failure
+			rtrn=1
+		fi
+	fi
+	echo
+;;
+restart)
+	$0 stop
+	$0 start
+;;
+condrestart|try-restart)
+	if status $RGMGRD > /dev/null 2>&1; then
+		$0 stop
+		$0 start
+		rtrn=$?
+	fi
+;;
+reload|force-reload)
+	# not required anymore
+	# return not implemented
+	rtrn=3
+;;
+status)
+	status $RGMGRD
+	rtrn=$?
+;;
+stop)
+	echo -n "Stopping $ID: "
+
+	if status $RGMGRD > /dev/null 2>&1; then
+		if stop_cluster; then
+			success
+		else
+			failure
+			rtrn=1
+		fi
+	else
+		success
+	fi
+	echo
+	rm -f $LOCK_FILE
+;;
+*)
+	echo "usage: $0 {start|stop|restart|condrestart|try-restart|reload|force-reload|status}"
+	rtrn=2
+;;
+esac
+
+exit $rtrn
