@@ -1,0 +1,5 @@
+usr/sbin/fsck.gfs2 usr/sbin/gfs2_fsck
+usr/sbin/mkfs.gfs2 usr/sbin/gfs2_mkfs
+usr/sbin/mkfs.gfs2 usr/sbin/gfs2_jadd
+usr/sbin/mkfs.gfs2 usr/sbin/gfs2_grow
+sbin/mount.gfs2 usr/sbin/gfs2_mount

@@ -1,0 +1,75 @@
+From: =?UTF-8?q?Guido=20G=C3=BCnther?= <agx@sigxcpu.org>
+Date: Tue, 13 Oct 2009 22:25:09 +0200
+Subject: [PATCH] Fix Default-Start/Stop for dependency based boot
+
+based on a patch by Peter Reinholdtsen
+
+Closes; #541980
+---
+ cman/init.d/cman.in           |    4 ++--
+ gfs/init.d/gfs.in             |    4 ++--
+ gfs2/init.d/gfs2.in           |    4 ++--
+ rgmanager/init.d/rgmanager.in |    4 ++--
+ 4 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/cman/init.d/cman.in b/cman/init.d/cman.in
+index e0281be..dc98cfd 100644
+--- a/cman/init.d/cman.in
++++ b/cman/init.d/cman.in
+@@ -10,8 +10,8 @@
+ # Provides:		cman
+ # Required-Start:	$network $time
+ # Required-Stop:	$network $time
+-# Default-Start:
+-# Default-Stop:
++# Default-Start:	S
++# Default-Stop: 	0 6
+ # Short-Description:	Starts and stops cman
+ # Description:		Starts and stops the Cluster Manager set of daemons
+ ### END INIT INFO
+diff --git a/gfs/init.d/gfs.in b/gfs/init.d/gfs.in
+index 31104b4..031b29b 100644
+--- a/gfs/init.d/gfs.in
++++ b/gfs/init.d/gfs.in
+@@ -9,8 +9,8 @@
+ # Provides:		gfs
+ # Required-Start:	$network cman
+ # Required-Stop:	$network cman
+-# Default-Start:
+-# Default-Stop:
++# Default-Start:	S
++# Default-Stop: 	0 6
+ # Short-Description:	mount/unmount gfs filesystems configured in /etc/fstab
+ # Description:		mount/unmount gfs filesystems configured in /etc/fstab
+ ### END INIT INFO
+diff --git a/gfs2/init.d/gfs2.in b/gfs2/init.d/gfs2.in
+index e957a36..625ef67 100644
+--- a/gfs2/init.d/gfs2.in
++++ b/gfs2/init.d/gfs2.in
+@@ -9,8 +9,8 @@
+ # Provides:		gfs2
+ # Required-Start:	$network cman
+ # Required-Stop:	$network cman
+-# Default-Start:
+-# Default-Stop:
++# Default-Start:	S
++# Default-Stop: 	0 6
+ # Short-Description:	mount/unmount gfs2 filesystems configured in /etc/fstab
+ # Description:		mount/unmount gfs2 filesystems configured in /etc/fstab
+ ### END INIT INFO
+diff --git a/rgmanager/init.d/rgmanager.in b/rgmanager/init.d/rgmanager.in
+index 38f7b1f..3b283fe 100644
+--- a/rgmanager/init.d/rgmanager.in
++++ b/rgmanager/init.d/rgmanager.in
+@@ -8,8 +8,8 @@
+ # Provides:		rgmanager
+ # Required-Start:	cman
+ # Required-Stop:	cman
+-# Default-Start:
+-# Default-Stop:
++# Default-Start:	S
++# Default-Stop: 	0 6
+ # Short-Description:	Starts and stops Red Hat Service (resource group) Manager
+ # Description:		Starts and stops Red Hat Service (resource group) Manager
+ ### END INIT INFO
+-- 
