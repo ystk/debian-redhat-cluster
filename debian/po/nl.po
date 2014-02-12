@@ -1,0 +1,36 @@
+# Dutch translation of redhat-cluster debconf templates.
+# Copyright (C) 2012 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the redhat-cluster package.
+# Jeroen Schot <schot@a-eskwadraat.nl>, 2012.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: redhat-cluster 3.0.12-3\n"
+"Report-Msgid-Bugs-To: redhat-cluster@packages.debian.org\n"
+"POT-Creation-Date: 2009-11-17 17:39+0100\n"
+"PO-Revision-Date: 2012-01-23 13:42+0100\n"
+"Last-Translator: Jeroen Schot <schot@a-eskwadraat.nl>\n"
+"Language-Team: Debian l10n Dutch <debian-l10n-dutch@lists.debian.org>\n"
+"Language: nl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. Type: boolean
+#. Description
+#: ../cman.templates:2001
+msgid "Do you want to abort the Red Hat Cluster Suite upgrade?"
+msgstr "Wilt u het opwaarderen van de Red Hat Cluster Suite afbreken?"
+
+#. Type: boolean
+#. Description
+#: ../cman.templates:2001
+msgid ""
+"The new version 3 of the Red Hat Cluster Suite is not compatible with the "
+"currently installed one. Upgrading these packages without stopping the "
+"complete cluster can cause file system corruption on shared storage devices."
+msgstr ""
+"De nieuwe versie 3 van de Red Hat Cluster Suite is niet compatibel met "
+"degene die op dit moment is geïnstalleerd. Het opwaarderen van deze "
+"pakketten zonder dat het hele cluster is gestopt kan corruptie van het "
+"bestandssysteem op gedeelde opslagapparaten veroorzaken."

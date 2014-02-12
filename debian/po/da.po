@@ -1,0 +1,36 @@
+# Danish translation redhat-cluster.
+# Copyright (C) redhat-cluster & nedenstående oversættere.
+# This file is distributed under the same license as the redhat-cluster package.
+# Joe Hansen (joedalton2@yahoo.dk), 2011.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: redhat-cluster\n"
+"Report-Msgid-Bugs-To: redhat-cluster@packages.debian.org\n"
+"POT-Creation-Date: 2009-11-17 17:39+0100\n"
+"PO-Revision-Date: 2011-05-28 18:30+01:00\n"
+"Last-Translator: Joe Hansen <joedalton2@yahoo.dk>\n"
+"Language-Team: Danish <debian-l10n-danish@lists.debian.org>\n"
+"Language: da\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. Type: boolean
+#. Description
+#: ../cman.templates:2001
+msgid "Do you want to abort the Red Hat Cluster Suite upgrade?"
+msgstr "Ønsker du at afbryde opgraderingen af Red Hat Cluster Suite?"
+
+#. Type: boolean
+#. Description
+#: ../cman.templates:2001
+msgid ""
+"The new version 3 of the Red Hat Cluster Suite is not compatible with the "
+"currently installed one. Upgrading these packages without stopping the "
+"complete cluster can cause file system corruption on shared storage devices."
+msgstr ""
+"Den nye version 3 af Red Hat Cluster Suite er ikke kompatibel med den "
+"aktuelt installerede. Opgradering af disse pakker uden at stoppe hele "
+"sektorgruppen (cluster) kan medføre ødelæggelse af filsystemet på delte "
+"lagerenheder."

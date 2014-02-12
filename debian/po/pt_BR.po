@@ -1,0 +1,38 @@
+# redhat-cluster Brazilian Portuguese debconf template translation.
+# Copyright (C) 2011 COPYRIGHT HOLDER
+# This file is distributed under the same license as the redhat-cluster package.
+# Flamarion Jorge <jorge.flamarion@gmail.com>, 2011.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: redhat-cluster 3.0.12\n"
+"Report-Msgid-Bugs-To: redhat-cluster@packages.debian.org\n"
+"POT-Creation-Date: 2009-11-17 17:39+0100\n"
+"PO-Revision-Date: 2011-11-19 20:44-0200\n"
+"Last-Translator: Flamarion Jorge <jorge.flamarion@gmail.com>\n"
+"Language-Team: Brazilian Portuguese  <debian-l10n-portuguese@lists.debian."
+"org>\n"
+"Language: pt_BR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#. Type: boolean
+#. Description
+#: ../cman.templates:2001
+msgid "Do you want to abort the Red Hat Cluster Suite upgrade?"
+msgstr "Você deseja abortar a atualização do Red Hat Cluster Suíte?"
+
+#. Type: boolean
+#. Description
+#: ../cman.templates:2001
+msgid ""
+"The new version 3 of the Red Hat Cluster Suite is not compatible with the "
+"currently installed one. Upgrading these packages without stopping the "
+"complete cluster can cause file system corruption on shared storage devices."
+msgstr ""
+"A nova versão 3 do Red Hat Cluster Suíte não é compatível com a versão "
+"atualmente instalada. Atualizar estes pacotes sem parar o cluster completo "
+"pode causar corrompimento em sistemas de arquivos em dispositivos de "
+"armazenamento compartilhado."

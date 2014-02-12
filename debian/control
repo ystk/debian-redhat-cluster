@@ -11,6 +11,7 @@ Build-Depends: quilt, debhelper (>= 5), libxml2-dev, libncurses5-dev,
  linux-libc-dev, libvirt-dev (>= 0.3.0), libnss3-dev, libnspr4-dev, bzip2, libslang2-dev, libldap2-dev, perl-modules,
  libcorosync-dev (>= 1.2.1),
  libopenais-dev (>= 1.1.1),
+ openais-dev,
  xsltproc,
  python-pexpect,
  po-debconf,
@@ -25,7 +26,7 @@ Priority: optional
 Architecture: all
 Depends: ${misc:Depends}, cman (>= ${binary:Version}),
  gfs-tools (>= ${binary:Version}), gfs2-tools (>= ${binary:Version}),
- rgmanager (>= ${binary:Version}), clvm
+ rgmanager (>= ${binary:Version})
 Description: Red Hat cluster suite - metapackage
  RHCS is a cluster management infrastructure, for building
  high-availability multi-node clusters with service and IP failover on
@@ -40,9 +41,9 @@ Section: admin
 Pre-Depends: debconf | debconf-2.0
 Depends: ${misc:Depends}, ${shlibs:Depends}, corosync (>= 1.2.1),
  openais (>= 1.1.1), python, openipmi, sg3-utils, python-pexpect,
- libnet-snmp-perl, libnet-telnet-perl, snmp, telnet, openssh-client,
+ libnet-snmp-perl, libnet-telnet-perl, snmp, telnet | telnet-client, openssh-client,
  python-openssl, libxml2-utils
-Conflicts: libdlm-dev (<= 2.20090112-0ubuntu3)
+Conflicts: libdlm-dev (<= 2.20090112-0ubuntu3), fence-agents
 Description: Red Hat cluster suite - cluster manager
  This package is part of the Red Hat Cluster Suite, a complete
  high-availability solution.

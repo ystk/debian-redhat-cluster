@@ -7,7 +7,8 @@ usr/sbin/clustat
 usr/sbin/clusvcadm
 usr/sbin/rgmanager
 usr/sbin/rg_test
-usr/share/cluster/*
+usr/share/cluster/follow-service.sl
+usr/share/cluster/default_event_script.sl
 usr/share/man/man8/clubufflush.8
 usr/share/man/man8/clufindhostname.8
 usr/share/man/man8/clulog.8

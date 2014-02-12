@@ -3,3 +3,5 @@
 0003-Don-t-rely-on-chkconfig-and-check-for-network-manage.patch
 0004-Depend-on-remote_fs.patch
 0005-Remove-bashisms-from-resource-scripts.patch
+0006-Fix-FTBFS-due-to-moved-header-files.patch
+0007-Add-remote_fs-to-Required-Start-and-Required-Stop.patch

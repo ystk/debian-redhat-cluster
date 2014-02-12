@@ -1,0 +1,32 @@
+Description: Add $remote_fs to Required-Start and Required-Stop
+Origin: vendor
+Forwarded: no
+Author: Salvatore Bonaccorso <carnil@debian.org>
+Last-Update: 2012-07-07
+
+--- a/gfs/init.d/gfs.in
++++ b/gfs/init.d/gfs.in
+@@ -7,8 +7,8 @@
+ 
+ ### BEGIN INIT INFO
+ # Provides:		gfs
+-# Required-Start:	$network cman
+-# Required-Stop:	$network cman
++# Required-Start:	$network cman $remote_fs
++# Required-Stop:	$network cman $remote_fs
+ # Default-Start:	S
+ # Default-Stop: 	0 6
+ # Short-Description:	mount/unmount gfs filesystems configured in /etc/fstab
+--- a/gfs2/init.d/gfs2.in
++++ b/gfs2/init.d/gfs2.in
+@@ -7,8 +7,8 @@
+ 
+ ### BEGIN INIT INFO
+ # Provides:		gfs2
+-# Required-Start:	$network cman
+-# Required-Stop:	$network cman
++# Required-Start:	$network cman $remote_fs
++# Required-Stop:	$network cman $remote_fs
+ # Default-Start:	S
+ # Default-Stop: 	0 6
+ # Short-Description:	mount/unmount gfs2 filesystems configured in /etc/fstab

@@ -1,3 +1,54 @@
+redhat-cluster (3.0.12-3.2+deb7u2) testing-proposed-updates; urgency=low
+
+  * Non-maintainer upload.
+  * Drop clvm Depends for redhat-cluster-suite binary package.
+    Cluster (clvm) support was dropped in lvm2 source package by removing
+    the clvm binary package. Drop the Depends also in redhat-cluster-suite.
+    (Closes: #697870)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Thu, 10 Jan 2013 22:21:01 +0100
+
+redhat-cluster (3.0.12-3.2+deb7u1) testing-proposed-updates; urgency=low
+
+  * Non-maintainer upload.
+  * Upload to testing for wheezy.
+  * Don't install files already in resource-agents. (Closes: #649068)
+
+ -- Ivo De Decker <ivo.dedecker@ugent.be>  Fri, 28 Dec 2012 15:09:48 +0100
+
+redhat-cluster (3.0.12-3.2) unstable; urgency=low
+
+  * Non-maintainer upload.
+  * Add 0006-Fix-FTBFS-due-to-moved-header-files.patch patch.
+    Fix FTBFS due to moved header files. (Closes: #669446)
+  * Add 0007-Add-remote_fs-to-Required-Start-and-Required-Stop.patch patch.
+    Add $remote_fs to Required-Start and Required-Stop to fix lintian error
+    E: init.d-script-missing-dependency-on-remote_fs.
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sat, 07 Jul 2012 05:07:20 +0200
+
+redhat-cluster (3.0.12-3.1) unstable; urgency=low
+
+  * Non-maintainer upload.
+  * Fix pending l10n issues. Debconf translations:
+    - Brazilian Portuguese (Flamarion Jorge).  Closes: #650048
+    - Dutch; (Jeroen Schot).  Closes: #657007
+    - Polish (Michał Kułach).  Closes: #663689
+
+ -- Christian Perrier <bubulle@debian.org>  Wed, 21 Mar 2012 07:55:19 +0100
+
+redhat-cluster (3.0.12-3) unstable; urgency=low
+
+  * Add missing build dependency: openais-dev. (Closes: #640346)
+  * Added danish translation, thanks to Joe Dalton <joedalton2@yahoo.dk>.
+    (Closes: #628209)
+  * cman: depend on telnet | telnet-client to allow arbitrary telnet 
+    incarnations. (Closes: #626155)
+  * gfs2-tools: fix symlinks. (Closes: #625965)
+  * cman: confict with fence-agents. (Closes: #639985)
+
+ -- Frederik Schüler <fs@debian.org>  Wed, 16 Nov 2011 18:57:50 +0100
+
 redhat-cluster (3.0.12-2) unstable; urgency=low
 
   * Upload to unstable
