@@ -1,4 +1,0 @@
-usr/sbin/gfs2_edit usr/sbin/gfs_edit
-sbin/mount.gfs2 sbin/mount.gfs
-usr/share/man/man8/gfs2_edit.8.gz usr/share/man/man8/gfs_edit.8.gz
-usr/share/man/man8/mount.gfs2.8.gz usr/share/man/man8/mount.gfs.8.gz

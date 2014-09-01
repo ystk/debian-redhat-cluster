@@ -104,7 +104,7 @@ Note that if you are using the DLM with cman/corosync then you MUST tell it
 to use SCTP as it's communications protocol as TCP does not support multihoming.
 
   <clusternode name="nd1" nodeid="1"> 
-     <altname name="nd1a" port="6809" mcast="229.192.0.2"/>
+     <altname name="nd1a" port="6809" mcast="239.192.0.2"/>
   </clusternode>
 
   <dlm protocol="sctp"/>
@@ -125,7 +125,7 @@ It is possible to override the multicast address by specifying it in cluster.con
 as shown:
 
   <cman>
-      <multicast addr="229.192.0.1"/>
+      <multicast addr="239.192.0.1"/>
   </cman>
 
 .in -7

@@ -1,0 +1,97 @@
+#!/usr/bin/perl -w
+# Quorum detection watchdog script
+#
+# This script will return -2 if the node had quorum at one point
+# and then subsequently lost it
+#
+# Copyright 2011 Red Hat, Inc.
+
+# Amount of time in seconds to wait after quorum is lost to fail script
+$wait_time = 60;
+
+# Hard Reboot the system (doesn't cleanly shut down the system)
+$hardreboot = 0;
+
+# Location of temporary file to capture timeouts
+$timerfile = "/var/run/cluster/checkquorum-timer";
+
+# Enable debug messages (0 to disable, 1 to enable)
+$debugval = 0;
+
+# If command is called attempting to 'repair' we automatically fail
+if (($#ARGV != -1) && ($ARGV[0] eq "repair")) {
+  debug ("Failing on repair\n");
+  exit 1;
+}
+
+if (!quorum()) {
+  if (has_quorum_already_been_formed()) {
+    debug("Quorum has already existed, node can be rebooted!\n");
+    if (-e $timerfile) {
+       $tf = open (FILE, "$timerfile");
+       $time = <FILE>;
+       close (FILE);
+       $timediff = time() - $time;
+       if ($timediff >= $wait_time) {
+	 reboot()
+       } else {
+         $remaining = $wait_time - $timediff;
+         debug("Time has not exceeded wait time ($remaining seconds remaining).\n");
+       }
+    } else {
+      debug("Creating timer file...\n");
+       $tf = open (FILE, ">$timerfile");
+       print FILE time();
+       close (FILE);
+    }
+  } else {
+    debug("This is a new startup no reboot will occur.\n");
+    `rm -f $timerfile`;
+  }
+} else {
+  debug("Quorum exists, no reboot should occur.\n");
+  `rm -f $timerfile`;
+}
+
+sub has_quorum_already_been_formed {
+   $oe = `corosync-objctl 2>&1 | grep -E "runtime.totem.pg.mrp.srp.operational_entered|Could not initialize objdb library|Cannot connect to quorum service" `;
+   if ($oe =~ /^Could not/ || $oe =~ /^Cannot/) {
+	debug("corosync is not running\n");
+	exit 0;
+   }
+   $oe =~ s/.*=//;
+   if ($oe > 1) {
+	return 1;
+   } else {
+	return 0;
+   }
+}
+
+sub quorum {
+  $cq = `corosync-quorumtool -s 2>&1 | grep -E "Quorate:|Cannot connect to quorum service"`;
+  if ($cq =~ /Cannot connect to quorum service/) {
+    debug("corosync is not running\n");
+    exit 0;
+  }
+  $cq =~ s/Quorate: *//;
+  chomp ($cq);
+  return 1 if ($cq eq "Yes");
+  return 0;
+}
+
+sub reboot {
+  debug("Reboot commencing...\n");
+  `rm -f $timerfile`;
+  if ($hardreboot == 1) {
+    `echo 1 > /proc/sys/kernel/sysrq`;
+    `echo b > /proc/sysrq-trigger`;
+  }
+  exit -2;
+}
+
+sub debug {
+  $out = pop(@_);
+  if ($debugval) {
+    print $out;
+  }
+}

@@ -1,4 +1,4 @@
-# Auto-generated @ 2010-05-04 17:59:59
+# Auto-generated @ 2010-09-02 09:59:03
 dn: cn=schema
 attributeTypes: (
   1.3.6.1.4.1.2312.8.1.1.1 NAME 'rhcsConfig-version'
@@ -200,6 +200,12 @@ attributeTypes: (
   )
 attributeTypes: (
   1.3.6.1.4.1.2312.8.1.1.115 NAME 'rhcsLabel'
+  EQUALITY caseExactIA5Match
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+  SINGLE-VALUE
+  )
+attributeTypes: (
+  1.3.6.1.4.1.2312.8.1.1.280 NAME 'rhcsCman-label'
   EQUALITY caseExactIA5Match
   SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
   SINGLE-VALUE
@@ -583,6 +589,36 @@ attributeTypes: (
   SINGLE-VALUE
   )
 attributeTypes: (
+  1.3.6.1.4.1.2312.8.1.1.226 NAME 'rhcsPserver'
+  EQUALITY caseExactIA5Match
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+  SINGLE-VALUE
+  )
+attributeTypes: (
+  1.3.6.1.4.1.2312.8.1.1.225 NAME 'rhcsLpan'
+  EQUALITY caseExactIA5Match
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+  SINGLE-VALUE
+  )
+attributeTypes: (
+  1.3.6.1.4.1.2312.8.1.1.288 NAME 'rhcsEsh'
+  EQUALITY caseExactIA5Match
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+  SINGLE-VALUE
+  )
+attributeTypes: (
+  1.3.6.1.4.1.2312.8.1.1.219 NAME 'rhcsUser'
+  EQUALITY caseExactIA5Match
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+  SINGLE-VALUE
+  )
+attributeTypes: (
+  1.3.6.1.4.1.2312.8.1.1.286 NAME 'rhcsDelay'
+  EQUALITY caseExactIA5Match
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+  SINGLE-VALUE
+  )
+attributeTypes: (
   1.3.6.1.4.1.2312.8.1.1.49 NAME 'rhcsRpowerpath'
   EQUALITY caseExactIA5Match
   SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
@@ -643,6 +679,12 @@ attributeTypes: (
   SINGLE-VALUE
   )
 attributeTypes: (
+  1.3.6.1.4.1.2312.8.1.1.289 NAME 'rhcsQuiet'
+  EQUALITY caseExactIA5Match
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+  SINGLE-VALUE
+  )
+attributeTypes: (
   1.3.6.1.4.1.2312.8.1.1.59 NAME 'rhcsExec'
   EQUALITY caseExactIA5Match
   SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
@@ -656,6 +698,12 @@ attributeTypes: (
   )
 attributeTypes: (
   1.3.6.1.4.1.2312.8.1.1.52 NAME 'rhcsSecure'
+  EQUALITY caseExactIA5Match
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+  SINGLE-VALUE
+  )
+attributeTypes: (
+  1.3.6.1.4.1.2312.8.1.1.55 NAME 'rhcsIdentity-file'
   EQUALITY caseExactIA5Match
   SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
   SINGLE-VALUE
@@ -686,6 +734,36 @@ attributeTypes: (
   )
 attributeTypes: (
   1.3.6.1.4.1.2312.8.1.1.247 NAME 'rhcsSeparator'
+  EQUALITY caseExactIA5Match
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+  SINGLE-VALUE
+  )
+attributeTypes: (
+  1.3.6.1.4.1.2312.8.1.1.281 NAME 'rhcsPower-timeout'
+  EQUALITY caseExactIA5Match
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+  SINGLE-VALUE
+  )
+attributeTypes: (
+  1.3.6.1.4.1.2312.8.1.1.282 NAME 'rhcsShell-timeout'
+  EQUALITY caseExactIA5Match
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+  SINGLE-VALUE
+  )
+attributeTypes: (
+  1.3.6.1.4.1.2312.8.1.1.283 NAME 'rhcsLogin-timeout'
+  EQUALITY caseExactIA5Match
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+  SINGLE-VALUE
+  )
+attributeTypes: (
+  1.3.6.1.4.1.2312.8.1.1.284 NAME 'rhcsPower-wait'
+  EQUALITY caseExactIA5Match
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+  SINGLE-VALUE
+  )
+attributeTypes: (
+  1.3.6.1.4.1.2312.8.1.1.285 NAME 'rhcsRetry-on'
   EQUALITY caseExactIA5Match
   SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
   SINGLE-VALUE
@@ -727,7 +805,7 @@ attributeTypes: (
   SINGLE-VALUE
   )
 attributeTypes: (
-  1.3.6.1.4.1.2312.8.1.1.55 NAME 'rhcsIdentity-file'
+  1.3.6.1.4.1.2312.8.1.1.287 NAME 'rhcsMissing-as-off'
   EQUALITY caseExactIA5Match
   SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
   SINGLE-VALUE
@@ -776,18 +854,6 @@ attributeTypes: (
   )
 attributeTypes: (
   1.3.6.1.4.1.2312.8.1.1.260 NAME 'rhcsUdpport'
-  EQUALITY caseExactIA5Match
-  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
-  SINGLE-VALUE
-  )
-attributeTypes: (
-  1.3.6.1.4.1.2312.8.1.1.261 NAME 'rhcsCipher'
-  EQUALITY caseExactIA5Match
-  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
-  SINGLE-VALUE
-  )
-attributeTypes: (
-  1.3.6.1.4.1.2312.8.1.1.262 NAME 'rhcsMethod'
   EQUALITY caseExactIA5Match
   SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
   SINGLE-VALUE
@@ -962,12 +1028,6 @@ attributeTypes: (
   )
 attributeTypes: (
   1.3.6.1.4.1.2312.8.1.1.126 NAME 'rhcsAutostart'
-  EQUALITY caseExactIA5Match
-  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
-  SINGLE-VALUE
-  )
-attributeTypes: (
-  1.3.6.1.4.1.2312.8.1.1.127 NAME 'rhcsHardrecovery'
   EQUALITY caseExactIA5Match
   SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
   SINGLE-VALUE
@@ -1519,6 +1579,12 @@ attributeTypes: (
   SINGLE-VALUE
   )
 attributeTypes: (
+  1.3.6.1.4.1.2312.8.1.1.279 NAME 'rhcsNfspath'
+  EQUALITY caseExactIA5Match
+  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+  SINGLE-VALUE
+  )
+attributeTypes: (
   1.3.6.1.4.1.2312.8.1.1.227 NAME 'rhcsQuick-status'
   EQUALITY caseExactIA5Match
   SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
@@ -1532,12 +1598,6 @@ attributeTypes: (
   )
 attributeTypes: (
   1.3.6.1.4.1.2312.8.1.1.218 NAME 'rhcsListener-name'
-  EQUALITY caseExactIA5Match
-  SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
-  SINGLE-VALUE
-  )
-attributeTypes: (
-  1.3.6.1.4.1.2312.8.1.1.219 NAME 'rhcsUser'
   EQUALITY caseExactIA5Match
   SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
   SINGLE-VALUE
@@ -1591,7 +1651,7 @@ objectClasses: (
 objectClasses: (
      1.3.6.1.4.1.2312.8.1.2.29 NAME 'rhcsQuorumd' SUP top STRUCTURAL
      MUST ( cn )
-     MAY ( rhcsMaster-wins $ rhcsIo-timeout $ rhcsMax-error-cycles $ rhcsAllow-kill $ rhcsParanoid $ rhcsStop-cman $ rhcsPriority $ rhcsReboot $ rhcsScheduler $ rhcsStatus-file $ rhcsLabel $ rhcsDevice $ rhcsMin-score $ rhcsVotes $ rhcsTko $ rhcsInterval )
+     MAY ( rhcsMaster-wins $ rhcsIo-timeout $ rhcsMax-error-cycles $ rhcsAllow-kill $ rhcsParanoid $ rhcsStop-cman $ rhcsPriority $ rhcsReboot $ rhcsScheduler $ rhcsStatus-file $ rhcsCman-label $ rhcsLabel $ rhcsDevice $ rhcsMin-score $ rhcsVotes $ rhcsTko $ rhcsInterval )
    )
 objectClasses: (
      1.3.6.1.4.1.2312.8.1.2.30 NAME 'rhcsHeuristic' SUP top STRUCTURAL
@@ -1664,7 +1724,7 @@ objectClasses: (
 objectClasses: (
      1.3.6.1.4.1.2312.8.1.2.5 NAME 'rhcsFencedevice' SUP top STRUCTURAL
      MUST ( rhcsAgent $ name )
-     MAY ( rhcsRibcl $ rhcsSsl $ rhcsIo-fencing $ rhcsSwitch $ rhcsModule-name $ rhcsDrac-version $ rhcsMethod $ rhcsCipher $ rhcsUdpport $ rhcsSnmp-priv-passwd-script $ rhcsSnmp-priv-passwd $ rhcsSnmp-priv-prot $ rhcsSnmp-sec-level $ rhcsSnmp-auth-prot $ rhcsCommunity $ rhcsSnmp-version $ rhcsIdentity-file $ rhcsInet6-only $ rhcsInet4-only $ rhcsCmd-prompt $ rhcsHmc-version $ rhcsManaged $ rhcsPartition $ rhcsSeparator $ rhcsHelp $ rhcsVersion $ rhcsVerbose $ rhcsVmware-datacenter $ rhcsSecure $ rhcsVmware-type $ rhcsExec $ rhcsChannel-address $ rhcsSerial-params $ rhcsSerial-device $ rhcsTimeout $ rhcsUse-uuid $ rhcsDomain $ rhcsKey-file $ rhcsHash $ rhcsRetrans $ rhcsIpport $ rhcsMulticast-address $ rhcsIp-family $ rhcsDebug $ rhcsOption $ rhcsRpowerpath $ rhcsCserver $ rhcsServers $ rhcsAptpl $ rhcsLogfile $ rhcsAction $ rhcsDevices $ rhcsKey $ rhcsNodename $ rhcsLanplus $ rhcsAuth $ rhcsPasswd-script $ rhcsPasswd $ rhcsLogin $ rhcsIpaddr $ rhcsPort $ rhcsDevice )
+     MAY ( rhcsRibcl $ rhcsSsl $ rhcsIo-fencing $ rhcsSwitch $ rhcsModule-name $ rhcsDrac-version $ rhcsUdpport $ rhcsSnmp-priv-passwd-script $ rhcsSnmp-priv-passwd $ rhcsSnmp-priv-prot $ rhcsSnmp-sec-level $ rhcsSnmp-auth-prot $ rhcsCommunity $ rhcsSnmp-version $ rhcsMissing-as-off $ rhcsInet6-only $ rhcsInet4-only $ rhcsCmd-prompt $ rhcsHmc-version $ rhcsManaged $ rhcsPartition $ rhcsRetry-on $ rhcsPower-wait $ rhcsLogin-timeout $ rhcsShell-timeout $ rhcsPower-timeout $ rhcsSeparator $ rhcsHelp $ rhcsVersion $ rhcsVerbose $ rhcsVmware-datacenter $ rhcsIdentity-file $ rhcsSecure $ rhcsVmware-type $ rhcsExec $ rhcsQuiet $ rhcsChannel-address $ rhcsSerial-params $ rhcsSerial-device $ rhcsTimeout $ rhcsUse-uuid $ rhcsDomain $ rhcsKey-file $ rhcsHash $ rhcsRetrans $ rhcsIpport $ rhcsMulticast-address $ rhcsIp-family $ rhcsDebug $ rhcsOption $ rhcsRpowerpath $ rhcsDelay $ rhcsUser $ rhcsEsh $ rhcsLpan $ rhcsPserver $ rhcsCserver $ rhcsServers $ rhcsAptpl $ rhcsLogfile $ rhcsAction $ rhcsDevices $ rhcsKey $ rhcsNodename $ rhcsLanplus $ rhcsAuth $ rhcsPasswd-script $ rhcsPasswd $ rhcsLogin $ rhcsIpaddr $ rhcsPort $ rhcsDevice )
    )
 objectClasses: (
      1.3.6.1.4.1.2312.8.1.2.21 NAME 'rhcsRm' SUP top STRUCTURAL
@@ -1703,13 +1763,18 @@ objectClasses: (
 #objectClasses: (
 #     1.3.6.1.4.1.2312.8.1.2.27 NAME 'rhcsResources' SUP top STRUCTURAL
 #   )
+### Placeholder for rhcsResource-defaults
+### This object class currently has no attributes
+#objectClasses: (
+#     1.3.6.1.4.1.2312.8.1.2.62 NAME 'rhcsResource-defaults' SUP top STRUCTURAL
+#   )
 objectClasses: (
      1.3.6.1.4.1.2312.8.1.2.59 NAME 'rhcsClvmd' SUP top STRUCTURAL
      MAY ( rhcsInterface )
    )
 objectClasses: (
      1.3.6.1.4.1.2312.8.1.2.31 NAME 'rhcsService' SUP top STRUCTURAL
-     MAY ( rhcs--failure-expire-time $ rhcs--max-failures $ rhcs--enforce-timeouts $ rhcs--independent-subtree $ rhcsPriority $ rhcsRestart-expire-time $ rhcsMax-restarts $ rhcsDepend-mode $ rhcsDepend $ rhcsRecovery $ rhcsNfs-client-cache $ rhcsNfslock $ rhcsExclusive $ rhcsHardrecovery $ rhcsAutostart $ rhcsDomain $ name $ rhcsRef )
+     MAY ( rhcs--failure-expire-time $ rhcs--max-failures $ rhcs--enforce-timeouts $ rhcs--independent-subtree $ rhcsPriority $ rhcsRestart-expire-time $ rhcsMax-restarts $ rhcsDepend-mode $ rhcsDepend $ rhcsRecovery $ rhcsNfs-client-cache $ rhcsNfslock $ rhcsExclusive $ rhcsAutostart $ rhcsDomain $ name $ rhcsRef )
    )
 objectClasses: (
      1.3.6.1.4.1.2312.8.1.2.32 NAME 'rhcsIp' SUP top STRUCTURAL
@@ -1764,12 +1829,16 @@ objectClasses: (
      MAY ( rhcs--failure-expire-time $ rhcs--max-failures $ rhcs--enforce-timeouts $ rhcs--independent-subtree $ rhcsService-name $ rhcsShutdown-wait $ rhcsCatalina-base $ rhcsCatalina-options $ rhcsTomcat-user $ rhcsConfig-file $ name $ rhcsRef )
    )
 objectClasses: (
+     1.3.6.1.4.1.2312.8.1.2.61 NAME 'rhcsTomcat-6' SUP top STRUCTURAL
+     MAY ( rhcs--failure-expire-time $ rhcs--max-failures $ rhcs--enforce-timeouts $ rhcs--independent-subtree $ rhcsService-name $ rhcsShutdown-wait $ rhcsConfig-file $ name $ rhcsRef )
+   )
+objectClasses: (
      1.3.6.1.4.1.2312.8.1.2.45 NAME 'rhcsLvm' SUP top STRUCTURAL
      MAY ( rhcs--failure-expire-time $ rhcs--max-failures $ rhcs--enforce-timeouts $ rhcs--independent-subtree $ rhcsNfslock $ rhcsSelf-fence $ rhcsLv-name $ rhcsVg-name $ name $ rhcsRef )
    )
 objectClasses: (
      1.3.6.1.4.1.2312.8.1.2.46 NAME 'rhcsVm' SUP top STRUCTURAL
-     MAY ( rhcs--failure-expire-time $ rhcs--max-failures $ rhcs--enforce-timeouts $ rhcs--independent-subtree $ rhcsMigration-uri $ rhcsHypervisor-uri $ rhcsHypervisor $ rhcsStatus-program $ rhcsRestart-expire-time $ rhcsMax-restarts $ rhcsDepend-mode $ rhcsDepend $ rhcsSnapshot $ rhcsPath $ rhcsMigrate $ rhcsXmlfile $ rhcsUse-virsh $ rhcsMigration-mapping $ rhcsRecovery $ rhcsExclusive $ rhcsHardrecovery $ rhcsAutostart $ rhcsDomain $ name $ rhcsRef )
+     MAY ( rhcs--failure-expire-time $ rhcs--max-failures $ rhcs--enforce-timeouts $ rhcs--independent-subtree $ rhcsMigration-uri $ rhcsHypervisor-uri $ rhcsHypervisor $ rhcsStatus-program $ rhcsRestart-expire-time $ rhcsMax-restarts $ rhcsDepend-mode $ rhcsDepend $ rhcsSnapshot $ rhcsPath $ rhcsMigrate $ rhcsXmlfile $ rhcsUse-virsh $ rhcsMigration-mapping $ rhcsRecovery $ rhcsExclusive $ rhcsAutostart $ rhcsDomain $ name $ rhcsRef )
    )
 objectClasses: (
      1.3.6.1.4.1.2312.8.1.2.47 NAME 'rhcsSAPInstance' SUP top STRUCTURAL
@@ -1790,6 +1859,10 @@ objectClasses: (
 objectClasses: (
      1.3.6.1.4.1.2312.8.1.2.58 NAME 'rhcsDrbd' SUP top STRUCTURAL
      MAY ( rhcs--failure-expire-time $ rhcs--max-failures $ rhcs--enforce-timeouts $ rhcs--independent-subtree $ rhcsResource $ name $ rhcsRef )
+   )
+objectClasses: (
+     1.3.6.1.4.1.2312.8.1.2.60 NAME 'rhcsNfsserver' SUP top STRUCTURAL
+     MAY ( rhcs--failure-expire-time $ rhcs--max-failures $ rhcs--enforce-timeouts $ rhcs--independent-subtree $ rhcsNfspath $ rhcsPath $ name $ rhcsRef )
    )
 objectClasses: (
      1.3.6.1.4.1.2312.8.1.2.51 NAME 'rhcsFs' SUP top STRUCTURAL
@@ -1822,5 +1895,5 @@ objectClasses: (
 objectClasses: (
      1.3.6.1.4.1.2312.8.1.2.6 NAME 'rhcsDevice' SUP top STRUCTURAL
      MUST ( name )
-     MAY ( rhcsRibcl $ rhcsSsl $ rhcsIo-fencing $ rhcsSwitch $ rhcsModule-name $ rhcsDrac-version $ rhcsMethod $ rhcsCipher $ rhcsUdpport $ rhcsSnmp-priv-passwd-script $ rhcsSnmp-priv-passwd $ rhcsSnmp-priv-prot $ rhcsSnmp-sec-level $ rhcsSnmp-auth-prot $ rhcsCommunity $ rhcsSnmp-version $ rhcsIdentity-file $ rhcsInet6-only $ rhcsInet4-only $ rhcsCmd-prompt $ rhcsHmc-version $ rhcsManaged $ rhcsPartition $ rhcsSeparator $ rhcsHelp $ rhcsVersion $ rhcsVerbose $ rhcsVmware-datacenter $ rhcsSecure $ rhcsVmware-type $ rhcsExec $ rhcsChannel-address $ rhcsSerial-params $ rhcsSerial-device $ rhcsTimeout $ rhcsUse-uuid $ rhcsDomain $ rhcsKey-file $ rhcsHash $ rhcsRetrans $ rhcsIpport $ rhcsMulticast-address $ rhcsIp-family $ rhcsDebug $ rhcsOption $ rhcsRpowerpath $ rhcsCserver $ rhcsServers $ rhcsAptpl $ rhcsLogfile $ rhcsAction $ rhcsDevices $ rhcsKey $ rhcsNodename $ rhcsLanplus $ rhcsAuth $ rhcsPasswd-script $ rhcsPasswd $ rhcsLogin $ rhcsIpaddr $ rhcsPort $ rhcsDevice )
+     MAY ( rhcsRibcl $ rhcsSsl $ rhcsIo-fencing $ rhcsSwitch $ rhcsModule-name $ rhcsDrac-version $ rhcsUdpport $ rhcsSnmp-priv-passwd-script $ rhcsSnmp-priv-passwd $ rhcsSnmp-priv-prot $ rhcsSnmp-sec-level $ rhcsSnmp-auth-prot $ rhcsCommunity $ rhcsSnmp-version $ rhcsMissing-as-off $ rhcsInet6-only $ rhcsInet4-only $ rhcsCmd-prompt $ rhcsHmc-version $ rhcsManaged $ rhcsPartition $ rhcsRetry-on $ rhcsPower-wait $ rhcsLogin-timeout $ rhcsShell-timeout $ rhcsPower-timeout $ rhcsSeparator $ rhcsHelp $ rhcsVersion $ rhcsVerbose $ rhcsVmware-datacenter $ rhcsIdentity-file $ rhcsSecure $ rhcsVmware-type $ rhcsExec $ rhcsQuiet $ rhcsChannel-address $ rhcsSerial-params $ rhcsSerial-device $ rhcsTimeout $ rhcsUse-uuid $ rhcsDomain $ rhcsKey-file $ rhcsHash $ rhcsRetrans $ rhcsIpport $ rhcsMulticast-address $ rhcsIp-family $ rhcsDebug $ rhcsOption $ rhcsRpowerpath $ rhcsDelay $ rhcsUser $ rhcsEsh $ rhcsLpan $ rhcsPserver $ rhcsCserver $ rhcsServers $ rhcsAptpl $ rhcsLogfile $ rhcsAction $ rhcsDevices $ rhcsKey $ rhcsNodename $ rhcsLanplus $ rhcsAuth $ rhcsPasswd-script $ rhcsPasswd $ rhcsLogin $ rhcsIpaddr $ rhcsPort $ rhcsDevice )
    )

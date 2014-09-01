@@ -33,6 +33,17 @@ void kick_node_from_cluster(int nodeid)
 	}
 }
 
+static cman_node_t *get_node(cman_node_t *node_list, int count, int nodeid)
+{
+	int i;
+
+	for (i = 0; i < count; i++) {
+		if (node_list[i].cn_nodeid == nodeid)
+			return &node_list[i];
+	}
+	return NULL;
+}
+
 static int is_member(cman_node_t *node_list, int count, int nodeid)
 {
 	int i;
@@ -148,8 +159,18 @@ int name_to_nodeid(char *name)
 
 static void update_cluster(void)
 {
+	cman_cluster_t info;
+	cman_node_t *old;
 	int quorate = cluster_quorate;
+	int removed = 0, added = 0;
 	int i, rv;
+
+	rv = cman_get_cluster(ch, &info);
+	if (rv < 0) {
+		log_error("cman_get_cluster error %d %d", rv, errno);
+		return;
+	}
+	cluster_ringid_seq = info.ci_generation;
 
 	cluster_quorate = cman_is_quorate(ch);
 
@@ -171,10 +192,11 @@ static void update_cluster(void)
 		if (old_nodes[i].cn_member &&
 		    !is_cluster_member(old_nodes[i].cn_nodeid)) {
 
-			log_debug("cluster node %d removed",
-				  old_nodes[i].cn_nodeid);
+			log_debug("cluster node %d removed seq %u",
+				  old_nodes[i].cn_nodeid, cluster_ringid_seq);
 
 			node_history_cluster_remove(old_nodes[i].cn_nodeid);
+			removed++;
 		}
 	}
 
@@ -182,11 +204,45 @@ static void update_cluster(void)
 		if (cman_nodes[i].cn_member &&
 		    !is_old_member(cman_nodes[i].cn_nodeid)) {
 
-			log_debug("cluster node %d added",
-				  cman_nodes[i].cn_nodeid);
+			log_debug("cluster node %d added seq %u",
+				  cman_nodes[i].cn_nodeid, cluster_ringid_seq);
 
 			node_history_cluster_add(cman_nodes[i].cn_nodeid);
+			added++;
+		} else {
+			/* look for any nodes that were members of both
+			 * old and new but have a new incarnation number
+			 * from old to new, indicating they left and rejoined
+			 * in between */
+
+			old = get_node(old_nodes, old_node_count, cman_nodes[i].cn_nodeid);
+
+			if (!old)
+				continue;
+			if (cman_nodes[i].cn_incarnation == old->cn_incarnation)
+				continue;
+
+			log_debug("cluster node %d removed and added seq %u "
+				  "old %u new %u",
+				  cman_nodes[i].cn_nodeid, cluster_ringid_seq,
+				  old->cn_incarnation,
+				  cman_nodes[i].cn_incarnation);
+
+			node_history_cluster_remove(cman_nodes[i].cn_nodeid);
+			removed++;
+
+			node_history_cluster_add(cman_nodes[i].cn_nodeid);
+			added++;
 		}
+	}
+
+	if (removed) {
+		cluster_quorate_from_last_update = 0;
+	} else if (added) {
+		if (!quorate && cluster_quorate)
+			cluster_quorate_from_last_update = 1;
+		else
+			cluster_quorate_from_last_update = 0;
 	}
 }
 

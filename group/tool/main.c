@@ -15,9 +15,6 @@
 
 #include "libgroup.h"
 #include "groupd.h"
-#include "libfenced.h"
-#include "libdlmcontrol.h"
-#include "libgfscontrol.h"
 #include "copyright.cf"
 
 #define GROUP_LIBGROUP			2
@@ -108,7 +105,6 @@ static void print_usage(void)
 	printf("dump fence         Show debug log from fenced (fence_tool dump)\n");
 	printf("dump dlm           Show debug log from dlm_controld (dlm_tool dump)\n");
 	printf("dump gfs           Show debug log from gfs_controld (gfs_control dump)\n");
-	printf("dump plocks <name> Show posix locks from dlm_controld for lockspace <name>\n");
 	printf("                   (dlm_tool plocks <name>)\n");
 	printf("\n");
 }
@@ -707,50 +703,19 @@ int main(int argc, char **argv)
 	case OP_DUMP:
 		if (opt_ind && opt_ind < argc) {
 			if (!strncmp(argv[opt_ind], "gfs", 3)) {
-				char gbuf[GFSC_DUMP_SIZE];
-
-				memset(gbuf, 0, sizeof(gbuf));
-
-				printf("dump gfs\n");
-				gfsc_dump_debug(gbuf);
-
-				do_write(STDOUT_FILENO, gbuf, strlen(gbuf));
+				system("gfs_control dump");
 			}
 
 			if (!strncmp(argv[opt_ind], "dlm", 3)) {
-				char dbuf[DLMC_DUMP_SIZE];
-
-				memset(dbuf, 0, sizeof(dbuf));
-
-				printf("dump dlm\n");
-				dlmc_dump_debug(dbuf);
-
-				do_write(STDOUT_FILENO, dbuf, strlen(dbuf));
+				system("dlm_tool dump");
 			}
 
 			if (!strncmp(argv[opt_ind], "fence", 5)) {
-				char fbuf[FENCED_DUMP_SIZE];
-
-				memset(fbuf, 0, sizeof(fbuf));
-
-				fenced_dump_debug(fbuf);
-
-				do_write(STDOUT_FILENO, fbuf, strlen(fbuf));
+				system("fence_tool dump");
 			}
 
 			if (!strncmp(argv[opt_ind], "plocks", 6)) {
-				char pbuf[DLMC_DUMP_SIZE];
-
-				if (opt_ind + 1 >= argc) {
-					printf("plock dump requires name\n");
-					return -1;
-				}
-
-				memset(pbuf, 0, sizeof(pbuf));
-
-				dlmc_dump_plocks(argv[opt_ind + 1], pbuf);
-
-				do_write(STDOUT_FILENO, pbuf, strlen(pbuf));
+				fprintf(stderr, "use dlm_tool command\n");
 			}
 		} else {
 			char rbuf[GROUPD_DUMP_SIZE];

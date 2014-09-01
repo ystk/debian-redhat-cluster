@@ -276,7 +276,7 @@ rg_state_list(int local_node_id, int fast)
 		free(rsl);
 		return NULL;
 	}
-
+	
 	qsort(rsl->rgl_states, rsl->rgl_count, sizeof(rg_state_t),
 	      rg_name_sort);
 
@@ -352,10 +352,12 @@ static cluster_member_list_t *ccs_member_list(void)
 	}
 
 	ccs_disconnect(desc);
-	ret->cml_members = nodes;
 
-	qsort(ret->cml_members, ret->cml_count, sizeof(cman_node_t),
-	      member_id_sort);
+	ret->cml_members = nodes;
+	if (nodes) {
+		qsort(ret->cml_members, ret->cml_count,
+		      sizeof(cman_node_t), member_id_sort);
+	}
 
 	return ret;
 }
@@ -454,6 +456,8 @@ _txt_rg_state(rg_state_t *rs, cluster_member_list_t *members, int flags,
 	      int svcsize, int nodesize, int statsize)
 {
 	char owner[MAXHOSTNAMELEN+1];
+	char state_string[255] = "";
+	char flags_string[16] = "";
 	char *name = rs->rs_name, *ptr;
 	int l;
 
@@ -481,11 +485,26 @@ _txt_rg_state(rg_state_t *rs, cluster_member_list_t *members, int flags,
 		snprintf(owner, sizeof(owner)-1, "%-.*s", nodesize,
 			 my_memb_id_to_name(members, rs->rs_owner));
 	}
+
+	/* Show a frozen service */
+	if (rs->rs_flags) {
+		rg_flags_str(flags_string, sizeof(flags_string), rs->rs_flags,
+			     NULL);
+
+		snprintf(state_string, sizeof(state_string), 
+			 "%-*.*s[%s]", (int)(statsize-(2+strlen(flags_string))),
+				       (int)(statsize-(2+strlen(flags_string))),
+			 rg_state_str(rs->rs_state), flags_string);
+	} else {
+		snprintf(state_string, sizeof(state_string),
+			 "%-*.*s", statsize, statsize,
+			 rg_state_str(rs->rs_state));
+	}
 	
 	printf(" %-*.*s %-*.*s %-*.*s\n",
 	       svcsize, svcsize, rs->rs_name,
 	       nodesize, nodesize, owner,
-	       statsize, statsize, rg_state_str(rs->rs_state));
+	       statsize, statsize, state_string);
 }
 
 
@@ -493,10 +512,20 @@ static void
 _txt_rg_state_v(rg_state_t *rs, cluster_member_list_t *members, int flags)
 {
 	time_t t;
+	char flags_string[255] = "";
+
+	rg_flags_str(flags_string, sizeof(flags_string), rs->rs_flags,
+		     (char *)", ");
 
 	printf("Service Name      : %s\n", rs->rs_name);
 	printf("  Current State   : %s (%d)\n",
 	       rg_state_str(rs->rs_state), rs->rs_state);
+	if (rs->rs_flags)
+		printf("  Flags           : %s (%d)\n",
+		       flags_string, rs->rs_flags);
+	else
+		printf("  Flags           : none (%d)\n",
+		       rs->rs_flags);
 	printf("  Owner           : %s\n",
 	       my_memb_id_to_name(members, rs->rs_owner));
 	printf("  Last Owner      : %s\n",
@@ -522,6 +551,7 @@ static void
 xml_rg_state(rg_state_t *rs, cluster_member_list_t *members, int flags)
 {
 	char time_str[32];
+	char flags_string[255] = "";
 	int x;
 	time_t t;
 
@@ -535,12 +565,16 @@ xml_rg_state(rg_state_t *rs, cluster_member_list_t *members, int flags)
 		}
 	}
 
-	printf("    <group name=\"%s\" state=\"%d\" state_str=\"%s\" "
+	printf("    <group name=\"%s\" state=\"%d\" state_str=\"%s\""
+	       " flags=\"%d\" flags_str=\"%s\""
 	       " owner=\"%s\" last_owner=\"%s\" restarts=\"%d\""
 	       " last_transition=\"%llu\" last_transition_str=\"%s\"/>\n",
 	       rs->rs_name,
 	       rs->rs_state,
 	       rg_state_str(rs->rs_state),
+	       rs->rs_flags,
+	       rg_flags_str(flags_string, sizeof(flags_string),
+			    rs->rs_flags, (char *)" "),
 	       my_memb_id_to_name(members, rs->rs_owner),
 	       my_memb_id_to_name(members, rs->rs_last_owner),
 	       rs->rs_restarts,
@@ -867,7 +901,7 @@ txt_cluster_status(cman_cluster_t *ci,
 		   rg_state_list_t *rgs, char *name, char *svcname, 
 		   int flags)
 {
-	int ret = 0;
+	int ret1 = 0, ret2 = 0;
 	
 	if (!svcname && !name) {
   		txt_cluster_info(ci);
@@ -879,14 +913,18 @@ txt_cluster_status(cman_cluster_t *ci,
 		}
 	}
 
-  	if (!svcname || (name && svcname))
- 		ret = txt_member_states(membership, name);
- 	if (name && !svcname)
- 		return ret;
- 	if (!name || (name && svcname))
- 		ret = txt_rg_states(rgs, membership, svcname, flags);
-
- 	return ret;
+  	if (!svcname || (name && svcname)) 
+ 		ret1 = txt_member_states(membership, name);
+ 	
+  	if (rgs &&
+  	    (!name || (name && svcname)))
+ 		ret2 = txt_rg_states(rgs, membership, svcname, flags);
+ 	
+ 	if (name && ret1)
+ 		return ret1;
+ 	if (svcname && ret2)
+ 		return ret2;
+ 	return 0;
 }
 
 
@@ -937,7 +975,7 @@ xml_cluster_status(cman_cluster_t *ci, int qs,
 
 
 static cluster_member_list_t *
-build_member_list(cman_handle_t ch, int *lid)
+build_member_list(cman_handle_t ch, int *lid, int fast)
 {
 	cluster_member_list_t *all, *part;
 	cman_node_t *m;
@@ -950,7 +988,7 @@ build_member_list(cman_handle_t ch, int *lid)
 
 	part = get_member_list(ch);
 
-	if (root && (all = ccs_member_list())) {
+	if (!fast && root && (all = ccs_member_list())) {
 
 		/* See if our config has anyone missed.  If so, flag
 		   them as missing from the config file */
@@ -995,11 +1033,11 @@ usage(char *arg0)
 "    -I                 Display local node ID and exit\n"
 "    -m <member>        Display status of <member> and exit\n"
 "    -s <service>       Display status of <service> and exit\n"
-"    -v                 Display version & cluster plugin and exit\n"
+"    -v                 Display version and exit\n"
 "    -x                 Dump information as XML\n"
-"    -Q			Return 0 if quorate, 1 if not (no output)\n"
-"    -f			Enable fast clustat reports\n"
-"    -l			Use long format for services\n"
+"    -Q                 Return 0 if quorate, 1 if not (no output)\n"
+"    -f                 Enable fast clustat reports\n"
+"    -l                 Use long format for services\n"
 "\n", basename(arg0));
 }
 
@@ -1094,7 +1132,7 @@ main(int argc, char **argv)
 
 	/* Connect & grab all our info */
 	ch = cman_init(NULL);
-	if (!ch) {
+	if (!ch && (runtype != VERSION_ONLY)) {
 		perror("Could not connect to CMAN");
 		return 1;
 	}
@@ -1108,8 +1146,6 @@ main(int argc, char **argv)
 	case VERSION_ONLY:
 		printf("%s version %s\n", basename(argv[0]),
 		       RELEASE_VERSION);
-		if (!ch)
-		       break;
 		goto cleanup;
 	case NODEID_ONLY:
 		if (!ch)
@@ -1140,7 +1176,7 @@ main(int argc, char **argv)
 
 	while (1) {
 		qs = cman_is_quorate(ch);
-		membership = build_member_list(ch, &local_node_id);
+		membership = build_member_list(ch, &local_node_id, fast);
 		
 		if (!member_name)
 			rgs = rg_state_list(local_node_id, fast);

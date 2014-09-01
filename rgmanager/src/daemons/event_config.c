@@ -291,8 +291,10 @@ get_event(int ccsfd, char *base, int idx, int *_done)
 	}
 
 	ev = malloc(sizeof(*ev));
-	if (!ev)
+	if (!ev) {
+		free(ret);
 		return NULL;
+	}
 	memset(ev, 0, sizeof(*ev));
 	ev->ev_name = ret;
 

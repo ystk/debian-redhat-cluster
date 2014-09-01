@@ -8,7 +8,7 @@ clusvcadm \- Cluster User Service Administration Utility
 .B ]
 .B [\-e
 .I <service>
-.B ]
+.B [\-F] ]
 .B [\-l]
 .B [\-u]
 .B [\-S]
@@ -33,6 +33,9 @@ clusvcadm \- Cluster User Service Administration Utility
 .B [\-s
 .I <service>
 .B ]
+.B [\-c
+.I <service>
+.B ]
 .B [\-v]
 
 .SH "DESCRIPTION"
@@ -49,10 +52,15 @@ on which the command is invoked.
 Stops and disables the user service named
 .I
 service
-.IP "\-e <service>"
+.IP "\-e <service> [\-F]"
 Enables and starts the user service named
 .I
 service
+
+Normally, rgmanager starts the service locally (i.e. on
+the host where clusvcadm was run).  However, if the \fB-F\fP
+option is specified, rgmanager will use the assigned failover
+domain rules as hints on where to start the service.
 .IP \-l
 Lock services in preparation for cluster shutdown.  This should only
 be used if the administrator intends to perform a global, cluster
@@ -116,6 +124,12 @@ Stops the service named
 .I
 service
 until a member transition or until it is enabled again.
+
+.IP "\-c <service>"
+Attempt to convalesce the named
+.I
+service
+by restarting failed, non-critical components.
 
 .IP \-v
 Display version information and exit.

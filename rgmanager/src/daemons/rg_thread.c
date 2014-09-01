@@ -277,6 +277,26 @@ resgroup_thread_main(void *arg)
 				ret = RG_NONE;
 			break;
 
+		case RG_CONVALESCE:
+			error = svc_convalesce(myname);
+
+			if (error == 0) {
+				ret = RG_SUCCESS;
+
+				pthread_mutex_lock(&my_queue_mutex);
+				purge_status_checks(&my_queue);
+				pthread_mutex_unlock(&my_queue_mutex);
+			} else if (error == RG_EFORWARD) {
+				ret = RG_NONE;
+				break;
+			} else {
+				/*
+				 * Bad news.
+				 */
+				ret = RG_EFAIL;
+			}
+			break;
+
 		case RG_MIGRATE:
 			error = svc_migrate(myname, req->rr_target);
 
@@ -503,10 +523,12 @@ resgroup_thread_main(void *arg)
 	/* reslist_mutex and my_queue_mutex held */
 	myself = find_resthread_byname(myname);
 
+	/* Not reached...
 	if (!myself) {
 		dbg_printf("I don't exist...\n");
 		raise(SIGSEGV);
 	}
+	 */
 
 	mystatus = pthread_mutex_destroy(&my_queue_mutex);
 	if (mystatus != 0)

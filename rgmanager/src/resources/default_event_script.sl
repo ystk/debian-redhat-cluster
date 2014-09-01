@@ -1,3 +1,23 @@
+%
+% Copyright (C) 1997-2003 Sistina Software, Inc.  All rights reserved.
+% Copyright (C) 2004-2011 Red Hat, Inc.  All rights reserved.
+%
+% This program is free software; you can redistribute it and/or
+% modify it under the terms of the GNU General Public License
+% as published by the Free Software Foundation; either version 2
+% of the License, or (at your option) any later version.
+%
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+%
+% You should have received a copy of the GNU General Public License
+% along with this program; if not, write to the Free Software
+% Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+%
+
+
 define node_in_set(node_list, node)
 {
 	variable x, len;
@@ -57,7 +77,7 @@ define separate_nodes(node_list)
 define exclusive_prioritize(svc, node_list)
 {
 	variable services = service_list();
-	variable len, x, y, owner, state, preferred_owner;
+	variable len, x, y, owner, nowner, state, preferred_owner;
 	variable svc_excl, other_excl;
 	variable nodes_x, nodes_s, nodes_e;
 
@@ -66,7 +86,8 @@ define exclusive_prioritize(svc, node_list)
 	%
 	svc_excl = atoi(service_property(svc, "exclusive"));
 	if (svc_excl == 0) {
-		return node_list;
+		notice("Starting ", svc, " on ", node_list);
+		return service_start(svc, node_list);
 	}
 
 	(nodes_e, nodes_s, nodes_x) = separate_nodes(node_list);
@@ -76,7 +97,11 @@ define exclusive_prioritize(svc, node_list)
 		% If we've got an exclusive service, only allow it to start on 
 		% empty nodes.
 		%
-		return nodes_e;
+		notice("Starting ", svc, " on ", nodes_e);
+		nowner = service_start(svc, nodes_e);
+		if ((nowner > 0) or (nowner != FAIL)) {
+			return nowner;
+		}
 	}
 
 	if (length(nodes_x) == 0) {
@@ -85,7 +110,7 @@ define exclusive_prioritize(svc, node_list)
 		% and no empty nodes, the service can not be started
 		%
 		notice("No empty / exclusive nodes available; cannot restart ", svc);
-		return nodes_x;
+		return ERR_DOMAIN;
 	}
 
 	%
@@ -129,14 +154,16 @@ define exclusive_prioritize(svc, node_list)
 		() = service_stop(services[x]);
 
 		%
-		% Return just the one node.
+		% Try just the one node.
 		%
-		node_list = subtract([0], 0);
-		node_list = union(node_list, owner);
-		return node_list;
+		notice("Starting ", svc, " on ", owner);
+		nowner = service_start(svc, owner);
+		if ((nowner > 0) or (nowner != FAIL)) {
+			return nowner;
+		}
 	}
 
-	return node_list;
+	return ERR_DOMAIN;
 }
 
 
@@ -151,6 +178,7 @@ define move_or_start(service, node_list)
 		(,,, owner, state) = service_status(depends);
 		if (owner < 0) {
 			debug(service, " is not runnable; dependency not met");
+			()=service_stop(service);
 			return ERR_DEPEND;
 		}
 	}
@@ -200,13 +228,13 @@ define move_or_start(service, node_list)
 			return ERR_ABORT;
 		}
 	} else {
-		node_list = exclusive_prioritize(service, node_list);
-		notice("Starting ", service, " on ", node_list);
+		return exclusive_prioritize(service, node_list);
 	}
 
 	if (length(node_list) == 0) {
 		return ERR_DOMAIN; 
 	}
+	notice("Starting ", service, " on ", node_list);
 	return service_start(service, node_list);
 }
 
@@ -428,7 +456,7 @@ define default_node_event_handler()
 define default_service_event_handler()
 {
 	variable services = service_list();
-	variable x;
+	variable x, excl, len;
 	variable depends;
 	variable depend_mode;
 	variable policy;
@@ -472,15 +500,16 @@ define default_service_event_handler()
 		return;
 	}
 
-	for (x = 0; x < length(services); x++) {
+	%
+	% Simplistic dependency handling
+	%
+	len = length(services);
+	for (x = 0; x < len; x++) {
 		if (service_name == services[x]) {
 			% don't do anything to ourself! 
 			continue;
 		}
 
-		%
-		% Simplistic dependency handling
-		%
 		depends = service_property(services[x], "depend");
 		depend_mode = service_property(services[x], "depend_mode");
 
@@ -502,6 +531,38 @@ define default_service_event_handler()
 		    (depend_mode != "soft")) {
 			info("Dependency lost; stopping ", services[x]);
 			()=service_stop(services[x]);
+		}
+	}
+
+	%
+	% Try to restart exclusive service which might have been recently
+	% stopped in order to make room for other exclusive services.
+	%
+	% Note that as a side effect, exclusive services (>=2) can't be
+	% stopped with clusvcadm -s; they will just pop right back - you
+	% must disable them if want them to stay stopped.
+	%
+	% This code has a side effect of brute-forcing the lowest-priority
+	% exclusive service offline in a cascaded fashion.
+	%
+	for (x = 0; x < len; x++) {
+		if (service_name == services[x]) {
+			% don't do anything to ourself!
+			continue;
+		}
+
+		excl = atoi(service_property(services[x], "exclusive"));
+		% non-exclusive or highest-prio (1) shouldn't get here
+		if ((excl == 0) or (excl == 1)) {
+			continue;
+		}
+
+		(,,, owner, state) = service_status(services[x]);
+		if (state == "stopped") {
+			info("Restarting stopped exclusive priority ",
+			     excl, " service ", services[x]);
+			nodes = allowed_nodes(services[x]);
+			()=move_or_start(services[x], nodes);
 		}
 	}
 }
@@ -596,6 +657,10 @@ define default_user_event_handler()
 	} else if (user_request == USER_MIGRATE) {
 
 		ret = service_migrate(service_name, user_target);
+
+	} else if (user_request == USER_CONVALESCE) {
+
+		ret = service_convalesce(service_name);
 
 	}
 

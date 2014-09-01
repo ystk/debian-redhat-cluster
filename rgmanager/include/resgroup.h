@@ -106,6 +106,7 @@ extern size_t rg_state_t_version_sizes[];
 #define RG_FREEZE	  23
 #define RG_UNFREEZE	  24
 #define RG_STATUS_INQUIRY 25
+#define RG_CONVALESCE	  26
 #define RG_NONE		  999
 
 const char *rg_req_str(int req);
@@ -135,6 +136,8 @@ int handle_start_remote_req(char *svcName, int req);
 
 /* Resource group flags (for now) */
 #define RG_FLAG_FROZEN			(1<<0)	/** Resource frozen */
+#define RG_FLAG_PARTIAL			(1<<1)	/** One or more non-critical
+						    resources offline */
 
 const char *rg_state_str(int val);
 const char *rg_flag_str(int val);
@@ -160,6 +163,7 @@ int svc_disable(const char *svcName);
 int svc_fail(const char *svcName);
 int svc_freeze(const char *svcName);
 int svc_unfreeze(const char *svcName);
+int svc_convalesce(const char *svcName);
 int svc_migrate(const char *svcName, int target);
 int svc_start_remote(const char *svcName, int request, uint32_t target);
 int svc_report_failure(const char *svcName);
@@ -198,6 +202,7 @@ int rg_unlock(struct dlm_lksb *p);
 
 
 /* Return codes */
+#define RG_EWARNING	-19		/* Warning (see logs) */
 #define RG_EPERM	-18		/* Permission denied */
 #define RG_ERELO	-17		/* Relocation failure; service running
 					   on original node */
@@ -232,6 +237,7 @@ const char *rg_strerror(int val);
  */
 #define SFL_FAILURE		(1<<0)
 #define SFL_RECOVERABLE		(1<<1)
+#define SFL_PARTIAL		(1<<2)
 
 //#define DEBUG
 #ifdef DEBUG

@@ -467,7 +467,15 @@ store_attribute(resource_attr_t **attrsp, char *name, char *value, int flags)
 		return 0;
 	}
 
-	for (x = 0; attrs[x].ra_name; x++);
+	for (x = 0; attrs[x].ra_name; x++) {
+		if (strcmp(attrs[x].ra_name, name) == 0) {
+			free(name);
+			free(attrs[x].ra_value);
+			attrs[x].ra_value = value;
+			attrs[x].ra_flags = flags;
+			return 0;
+		}
+	}
 
 	attrs = realloc(attrs, sizeof(resource_attr_t) * (x+2));
 	if (!attrs)
@@ -1040,8 +1048,10 @@ load_resource_rulefile(char *filename, resource_rule_t **rules)
 		}
 
 		rr = malloc(sizeof(*rr));
-		if (!rr)
+		if (!rr) {
+			free(type);
 			break;
+		}
 		memset(rr,0,sizeof(*rr));
 
 		rr->rr_flags = RF_INIT | RF_DESTROY;
@@ -1125,7 +1135,6 @@ load_resource_rules(const char *rpath, resource_rule_t **rules)
 	if (!dir)
 		return -1;
 
-	xmlInitParser();
 	while ((de = readdir(dir))) {
 		
 		fn = basename(de->d_name);
@@ -1163,7 +1172,6 @@ load_resource_rules(const char *rpath, resource_rule_t **rules)
    			load_resource_rulefile(path, rules);
   		}
 	}
-	xmlCleanupParser();
 
 	closedir(dir);
 

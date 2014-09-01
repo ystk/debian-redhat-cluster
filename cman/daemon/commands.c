@@ -85,6 +85,7 @@ static uint32_t shutdown_flags;
 static int shutdown_yes;
 static int shutdown_no;
 static int shutdown_expected;
+static int ccsd_timer_active = 0;
 
 static struct cluster_node *find_node_by_nodeid(int nodeid);
 static struct cluster_node *find_node_by_name(char *name);
@@ -97,7 +98,7 @@ static void recalculate_quorum(int allow_decrease, int by_current_nodes);
 static void send_kill(int nodeid, uint16_t reason);
 static const char *killmsg_reason(int reason);
 static void ccsd_timer_fn(void *arg);
-static int reread_config(int new_version);
+static int reload_config(int new_version, int should_broadcast);
 
 static void set_port_bit(struct cluster_node *node, uint8_t port)
 {
@@ -483,24 +484,7 @@ static int do_cmd_set_version(char *cmdbuf, int *retlen)
 	    version->patch != CNXMAN_PATCH_VERSION)
 		return -EINVAL;
 
-	if (config_version == version->config)
-		return 0;
-
-	/* If the passed-in version number is 0 then read the file now, then
-	 * tell the other nodes to look for that version number.
-	 * That means we also have to send the notification here, because it will
-	 * be skipped when we get our own RECONFIGURE message back, as the version
-	 * number will match.
-	 */
-	if (!version->config) {
-		if (!reread_config(0))
-			notify_listeners(NULL, EVENT_REASON_CONFIG_UPDATE, config_version);
-		version->config = config_version;
-	}
-
-	/* We will re-read CCS when we get our own message back */
-	send_reconfigure(us->node_id, RECONFIG_PARAM_CONFIG_VERSION, version->config);
-	return 0;
+	return reload_config(version->config, 1);
 }
 
 static int do_cmd_get_extrainfo(char *cmdbuf, char **retbuf, int retsize, int *retlen, int offset)
@@ -971,7 +955,7 @@ static int do_cmd_leave_cluster(char *cmdbuf, int *retlen)
 	memcpy(&leave_flags, cmdbuf, sizeof(int));
 
 	/* Ignore the use count if FORCE is set */
-	if (!(leave_flags & CLUSTER_LEAVEFLAG_FORCE)) {
+	if (!(leave_flags == CLUSTER_LEAVEFLAG_FORCE)) {
 		if (use_count)
 			return -ENOTCONN;
 	}
@@ -1007,7 +991,7 @@ static void check_shutdown_status(void)
 		    shutdown_flags & SHUTDOWN_ANYWAY) {
 			quit_threads = 1;
 			if (shutdown_flags & SHUTDOWN_REMOVE)
-				leaveflags |= CLUSTER_LEAVEFLAG_REMOVED;
+				leaveflags = CLUSTER_LEAVEFLAG_REMOVED;
 			send_leave(leaveflags);
 			reply = 0;
 		}
@@ -1096,26 +1080,66 @@ static int do_cmd_try_shutdown(struct connection *con, char *cmdbuf)
 	return 0;
 }
 
+static void free_quorum_device(void)
+{
+	if (!quorum_device)
+		return;
+
+	if (quorum_device->name)
+		free(quorum_device->name);
+
+	free(quorum_device);
+
+	quorum_device = NULL;
+}
+
+static void quorum_device_update_votes(int votes)
+{
+	int oldvotes;
+
+	/* Update votes even if it existed before */
+	oldvotes = quorum_device->votes;
+	quorum_device->votes = votes;
+
+	/* If it is a member and votes changed, recalculate quorum */
+	if (quorum_device->state == NODESTATE_MEMBER &&
+	    oldvotes != votes) {
+		recalculate_quorum(1, 0);
+	}
+}
+
 static int do_cmd_register_quorum_device(char *cmdbuf, int *retlen)
 {
 	int votes;
 	char *name = cmdbuf+sizeof(int);
 
-	if (!ais_running)
+	if (!ais_running) {
+		log_printf(LOG_ERR, "unable to register quorum device: corosync is not running\n");
 		return -ENOTCONN;
+	}
 
-	if (!we_are_a_cluster_member)
+	if (!we_are_a_cluster_member) {
+		log_printf(LOG_ERR, "unable to register quorum device: this node is not part of a cluster\n");
 		return -ENOENT;
+	}
 
-	if (strlen(name) > MAX_CLUSTER_MEMBER_NAME_LEN)
+	if (strlen(name) > MAX_CLUSTER_MEMBER_NAME_LEN) {
+		log_printf(LOG_ERR, "unable to register quorum device: name is too long\n");
+		/* this should probably return -E2BIG? */
 		return -EINVAL;
+	}
 
 	/* Allow re-registering of a quorum device if the name is the same */
-	if (quorum_device && strcmp(name, quorum_device->name))
-                return -EBUSY;
+	if (quorum_device && strcmp(name, quorum_device->name)) {
+		log_printf(LOG_ERR, "unable to re-register quorum device: device names do not match\n");
+		log_printf(LOG_DEBUG, "memb: old name: %s new name: %s\n", quorum_device->name, name);
+		return -EBUSY;
+	}
 
-	if (find_node_by_name(name))
-                return -EALREADY;
+	if (find_node_by_name(name)) {
+		log_printf(LOG_ERR, "unable to register quorum device: a node with the same name (%s) already exists\n", name);
+		return -EALREADY;
+	}
 
 	memcpy(&votes, cmdbuf, sizeof(int));
 
@@ -1123,18 +1147,19 @@ static int do_cmd_register_quorum_device(char *cmdbuf, int *retlen)
 	if (!quorum_device)
 	{
 		quorum_device = malloc(sizeof(struct cluster_node));
-		if (!quorum_device)
+		if (!quorum_device) {
+			log_printf(LOG_ERR, "unable to register quorum device: not enough memory\n");
 			return -ENOMEM;
+		}
 		memset(quorum_device, 0, sizeof(struct cluster_node));
 
-		quorum_device->name = malloc(strlen(name) + 1);
+		quorum_device->name = strdup(name);
 		if (!quorum_device->name) {
-			free(quorum_device);
-			quorum_device = NULL;
+			log_printf(LOG_ERR, "unable to register quorum device: not enough memory\n");
+			free_quorum_device();
 			return -ENOMEM;
 		}
 
-		strcpy(quorum_device->name, name);
 		quorum_device->state = NODESTATE_DEAD;
 		gettimeofday(&quorum_device->join_time, NULL);
 
@@ -1147,97 +1172,164 @@ static int do_cmd_register_quorum_device(char *cmdbuf, int *retlen)
 		log_printf(LOG_INFO, "quorum device re-registered\n");
 	}
 
-	/* Update votes even if it existed before */
-        quorum_device->votes = votes;
+	quorum_device_update_votes(votes);
 
-        return 0;
+	return 0;
 }
 
 static int do_cmd_unregister_quorum_device(char *cmdbuf, int *retlen)
 {
-        if (!quorum_device)
-                return -EINVAL;
+	if (!quorum_device) {
+		log_printf(LOG_DEBUG, "memb: failed to unregister a non existing quorum device\n");
+		return -EINVAL;
+	}
 
-        if (quorum_device->state == NODESTATE_MEMBER)
-                return -EBUSY;
+	if (quorum_device->state == NODESTATE_MEMBER) {
+		log_printf(LOG_DEBUG, "memb: failed to unregister: quorum device still active.\n");
+		return -EBUSY;
+	}
 
-	free(quorum_device->name);
-	free(quorum_device);
-
-        quorum_device = NULL;
+	free_quorum_device();
 
 	log_printf(LOG_INFO, "quorum device unregistered\n");
-        return 0;
+	return 0;
 }
 
-static int reread_config(int new_version)
+static int do_cmd_update_quorum_device(char *cmdbuf, int *retlen)
 {
-	int read_err;
+	int votes, ret = 0;
+	char *name = cmdbuf+sizeof(int);
+
+	if (!quorum_device) {
+		log_printf(LOG_DEBUG, "memb: failed to update a non-existing quorum device\n");
+		return -EINVAL;
+	}
+
+	memcpy(&votes, cmdbuf, sizeof(int));
+
+	/* allow name change of the quorum device */
+	if (quorum_device && strcmp(name, quorum_device->name)) {
+		char *newname = NULL;
+		char *oldname = NULL;
+
+		log_printf(LOG_DEBUG, "memb: old name: %s new name: %s\n", quorum_device->name, name);
+		newname = strdup(name);
+		if (!newname) {
+			log_printf(LOG_ERR, "memb: unable to update quorum device name: out of memory\n");
+			ret = -ENOMEM;
+			goto out;
+		}
+		log_printf(LOG_INFO, "quorum device name changed to %s\n", name);
+		oldname = quorum_device->name;
+		quorum_device->name = newname;
+		free(oldname);
+	}
+
+out:
+	quorum_device_update_votes(votes);
+
+	return ret;
+}
+
+static int reload_config(int new_version, int should_broadcast)
+{
 	const char *reload_err = NULL;
+
+	if (config_version == new_version) {
+		log_printf(LOG_DEBUG, "We are already using config version [%d]\n",
+			   config_version);
+		return 0;
+	}
+
+	if (new_version > 0 && new_version < config_version) {
+		log_printf(LOG_ERR, "Requested version [%d] older than running version [%d]\n",
+			   new_version, config_version);
+		return -1;
+	}
 
 	wanted_config_version = new_version;
 
 	/* Tell objdb to reload */
-	read_err = corosync->object_reload_config(1, &reload_err);
+	config_error = corosync->object_reload_config(1, &reload_err);
+	if (config_error)
+		log_printf(LOG_ERR, "Unable to load new config in corosync: %s\n",
+			   reload_err);
 
-	/* Now get our bits */
-	if (!read_err)
-		read_err = read_cman_nodes(corosync, &config_version, 0);
+	if (!config_error)
+		config_error = read_cman_nodes(corosync, &config_version, 0);
 
-	if (read_err) {
-		config_error = 1;
-		log_printf(LOG_ERR, "Can't get updated config version %d: %s. Activity suspended on this node\n",
-			   wanted_config_version, reload_err?reload_err:"version mismatch on this node");
+	if (config_error) {
+		if (wanted_config_version) {
+			log_printf(LOG_ERR, "Can't get updated config version %d: %s.\n",
+				   wanted_config_version, reload_err?reload_err:"version mismatch on this node");
+		} else {
+			log_printf(LOG_ERR, "Can't get updated config version: %s.\n",
+				   reload_err?reload_err:"version mismatch on this node");
+		}
+
+		if (should_broadcast) {
+			log_printf(LOG_ERR, "Continuing activity with old configuration\n");
+			config_error=0;
+			return -2;
+		} else {
+			log_printf(LOG_ERR, "Activity suspended on this node\n");
+
+			if (!ccsd_timer_active) {
+				log_printf(LOG_ERR, "Error reloading the configuration, will retry every second\n");
+				corosync->timer_add_duration((unsigned long long)ccsd_poll_interval*1000000, NULL,
+							     ccsd_timer_fn, &ccsd_timer);
+				ccsd_timer_active = 1;
+			}
+		}
+	} else { 
+
+		/*
+		 * at this point we know:
+		 * config is loaded in objdb with a newer version than the previous one
+		 * we have been able to activate it in cman (via read_cman_nodes)
+		 */
+
+		if (should_broadcast) {
+			log_printf(LOG_DEBUG, "Sending reconfigure message to all nodes\n");
+			send_reconfigure(us->node_id, RECONFIG_PARAM_CONFIG_VERSION, config_version);
+		}
+
+		log_printf(LOG_DEBUG, "Recalculating quorum\n");
+		recalculate_quorum(1, 0);
+
+		log_printf(LOG_DEBUG, "Notify all listeners\n");
+		notify_listeners(NULL, EVENT_REASON_CONFIG_UPDATE, config_version);
 	}
-
-	/* Still too old?? */
-	if (new_version && config_version < wanted_config_version) {
-		log_printf(LOG_ERR, "Can't get updated config version %d, config file is version %d.\n",
-			   wanted_config_version, config_version);
-	}
-
-	/* Keep looking */
-	if (read_err || config_version < wanted_config_version) {
-		corosync->timer_add_duration((unsigned long long)ccsd_poll_interval*1000000, NULL,
-					     ccsd_timer_fn, &ccsd_timer);
-	}
-	else {
-		send_transition_msg(0,0);
-	}
-
-	return read_err;
+	return config_error;
 }
 
 static void ccsd_timer_fn(void *arg)
 {
 	log_printf(LOG_DEBUG, "Polling configuration for updated information\n");
-	if (!reread_config(wanted_config_version) && config_version >= wanted_config_version) {
-		log_printf(LOG_ERR, "Now got config information version %d, continuing\n", config_version);
+
+	ccsd_timer_active = 0;	
+
+	if (!reload_config(wanted_config_version, 0) &&
+	    config_version >= wanted_config_version) {
+		log_printf(LOG_DEBUG, "ccsd_timer_fn got the new config\n");
 		config_error = 0;
-		recalculate_quorum(0, 0);
-		notify_listeners(NULL, EVENT_REASON_CONFIG_UPDATE, config_version);
+		return;
 	}
-	else {
-	      time_t now;
-	      now = time(NULL);
 
-	      log_printf(LOG_DEBUG, "Checking for startup failure: local_first_trans=%d, time=%d\n",
-			 local_first_trans, (int)(now - join_time));
-	      /* 
-	       * If we haven't got the 'right' configuration at startup before (default) 30s
-	       * then quit so the node can boot 
-	       */
+	if (local_first_trans) {
+		time_t now;
+		now = time(NULL);
 
-	      if (local_first_trans && now > join_time+startup_config_timeout) {
-		  log_printf(LOG_ERR, "Failed to get an up-to-date config file, wanted %d, only got %d. Will exit\n",
-			     wanted_config_version, config_version);
-		  log_printf(LOG_ERR, "Check your configuration distribution method is working correctly\n");
-		  cman_finish();
-		  corosync_shutdown();
-	      }
+		if (now > join_time+startup_config_timeout) {
+			log_printf(LOG_ERR, "Checking for startup failure: time=%d\n", (int)(now - join_time));
+			log_printf(LOG_ERR, "Failed to get an up-to-date config file, wanted %d, only got %d. Will exit\n",
+				   wanted_config_version, config_version);
+			log_printf(LOG_ERR, "Check your configuration distribution method is working correctly\n");
+			cman_finish();
+			corosync_shutdown();
+		}
 	}
 }
-
 
 static void quorum_device_timer_fn(void *arg)
 {
@@ -1537,6 +1629,10 @@ int process_command(struct connection *con, int cmd, char *cmdbuf,
 		err = do_cmd_unregister_quorum_device(cmdbuf, retlen);
 		break;
 
+	case CMAN_CMD_UPDATE_QUORUMDEV:
+		err = do_cmd_update_quorum_device(cmdbuf, retlen);
+		break;
+
 	case CMAN_CMD_POLL_QUORUMDEV:
 		err = do_cmd_poll_quorum_device(cmdbuf, retlen);
 		break;
@@ -1721,25 +1817,31 @@ static int valid_transition_msg(int nodeid, struct cl_transmsg *msg)
 		return -1;
 	}
 
-	/* New config version - try to read new file */
-	if (msg->config_version > config_version) {
+	if (local_first_trans) {
+		time_t now;
+		now = time(NULL);
 
-		if (!reread_config(msg->config_version)) {
-
-			if (config_version > msg->config_version) {
-				/* Tell everyone else to update */
-				send_reconfigure(us->node_id, RECONFIG_PARAM_CONFIG_VERSION, config_version);
-			}
-			recalculate_quorum(0, 0);
-			notify_listeners(NULL, EVENT_REASON_CONFIG_UPDATE, config_version);
+		if (now > join_time+startup_config_timeout) {
+			log_printf(LOG_DEBUG, "ccs: disable startup transition check\n");
+			local_first_trans = 0;
 		}
 	}
 
+	/* New config version - try to read new file */
+	if (msg->config_version > config_version) {
+		log_printf(LOG_DEBUG, "Reloading config from TRANSITION message\n");
+		if (reload_config(msg->config_version, 0)) {
+			if (msg->config_version != config_version) {
+				log_printf(LOG_ERR, "Node %d conflict, remote config version id=%d, local=%d\n",
+					   nodeid, msg->config_version, config_version);
+				return -1;
+			}
+		}
+	}
 
-	if (msg->config_version != config_version) {
-		log_printf(LOG_ERR, "Node %d conflict, remote config version id=%d, local=%d\n",
-			nodeid, msg->config_version, config_version);
-		return -1;
+	if ((msg->config_version == config_version) && (nodeid != us->node_id)) {
+		log_printf(LOG_DEBUG, "Completed first transition with nodes on the same config versions\n");
+		local_first_trans = 0;
 	}
 
 	return 0;
@@ -1882,10 +1984,7 @@ static void do_reconfigure_msg(void *data)
 		break;
 
 	case RECONFIG_PARAM_CONFIG_VERSION:
-		if (config_version != msg->value) {
-			if (!reread_config(msg->value))
-				notify_listeners(NULL, EVENT_REASON_CONFIG_UPDATE, config_version);
-		}
+		reload_config(msg->value, 0);
 		break;
 	}
 }
@@ -2008,6 +2107,7 @@ static void do_process_transition(int nodeid, char *data)
 
 	/* Take into account any new expected_votes value that the new node has */
 	node->expected_votes = msg->expected_votes;
+	us->expected_votes = max(us->expected_votes, msg->expected_votes);
 
 	if (old_state != node->state || old_expected != node->expected_votes)
 		recalculate_quorum(0, 0);
@@ -2219,8 +2319,12 @@ void add_ais_node(int nodeid, uint64_t incar, int total_members)
 	if (node->state == NODESTATE_DEAD || node->state == NODESTATE_LEAVING) {
 		gettimeofday(&node->join_time, NULL);
 		node->incarnation = incar;
+		node->leave_reason = 0;
+		/* If a node rejoins before it completes a leave,
+		 * we should not increment cluster_members */
+		if (node->state != NODESTATE_LEAVING)
+			cluster_members++;
 		node->state = NODESTATE_MEMBER;
-		cluster_members++;
 		recalculate_quorum(0, 0);
 	}
 }
@@ -2266,7 +2370,7 @@ void del_ais_node(int nodeid)
 		cluster_members--;
 
 		log_printf(LOGSYS_LEVEL_DEBUG, "memb: del_ais_node %s, leave_reason=%x\n", node->name, node->leave_reason);
-		if ((node->leave_reason & 0xF) == CLUSTER_LEAVEFLAG_REMOVED)
+		if (node->leave_reason == CLUSTER_LEAVEFLAG_REMOVED)
 			recalculate_quorum(1, 1);
 		else
 			recalculate_quorum(0, 0);

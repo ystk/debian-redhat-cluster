@@ -902,7 +902,7 @@ static void print_usage(void)
 	printf("  -j <secs>    Post-join fencing delay (default %d)\n", DEFAULT_POST_JOIN_DELAY);
 	printf("  -f <secs>    Post-fail fencing delay (default %d)\n", DEFAULT_POST_FAIL_DELAY);
 	printf("  -R <secs>    Override time (default %d)\n", DEFAULT_OVERRIDE_TIME);
-
+	printf("  -q           Disable dbus signals\n");
 	printf("  -O <path>    Override path (default %s)\n", DEFAULT_OVERRIDE_PATH);
 	printf("  -h           Print this help, then exit\n");
 	printf("  -V           Print program version information, then exit\n");
@@ -912,7 +912,7 @@ static void print_usage(void)
 	printf("\n");
 }
 
-#define OPTION_STRING	"Lg:cj:f:Dn:O:hVSse:r:"
+#define OPTION_STRING	"Lg:cj:f:Dn:O:hVSse:r:q"
 
 static void read_arguments(int argc, char **argv)
 {
@@ -970,6 +970,11 @@ static void read_arguments(int argc, char **argv)
 			cfgd_override_path = strdup(optarg);
 			break;
 
+		case 'q':
+			optd_disable_dbus = 1;
+			cfgd_disable_dbus = 1;
+			break;
+
 		case 'r':
 			register_controlled_dir(optarg);
 			break;
@@ -1008,18 +1013,6 @@ static void read_arguments(int argc, char **argv)
 	}
 }
 
-static void set_oom_adj(int val)
-{
-	FILE *fp;
-
-	fp = fopen("/proc/self/oom_adj", "w");
-	if (!fp)
-		return;
-
-	fprintf(fp, "%i", val);
-	fclose(fp);
-}
-
 int main(int argc, char **argv)
 {
 	INIT_LIST_HEAD(&domains);
@@ -1040,10 +1033,14 @@ int main(int argc, char **argv)
 	init_logging();
 	log_level(LOG_INFO, "fenced %s started", RELEASE_VERSION);
 	signal(SIGTERM, sigterm_handler);
-	set_oom_adj(-16);
+
+	if (!cfgd_disable_dbus) {
+		fd_dbus_init();
+	}
 
 	loop();
 
+	fd_dbus_exit();
 	unlink(LOCKFILE_NAME);
 	return 0;
 }
@@ -1069,6 +1066,8 @@ int daemon_quit;
 int cluster_down;
 struct list_head domains;
 int cluster_quorate;
+int cluster_quorate_from_last_update;
+uint32_t cluster_ringid_seq;
 uint64_t quorate_time;
 int our_nodeid;
 char our_name[MAX_NODENAME_LEN+1];

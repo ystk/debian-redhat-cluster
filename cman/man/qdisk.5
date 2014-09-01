@@ -1,4 +1,4 @@
-.TH "QDisk" "5" "20 Feb 2007" "" "Cluster Quorum Disk"
+.TH "QDisk" "5" "12 Oct 2011" "" "Cluster Quorum Disk"
 .SH "NAME"
 qdisk \- a disk-based quorum daemon for CMAN / Linux-Cluster
 .SH "1. Overview"
@@ -189,7 +189,7 @@ master will only grant a node membership if:
 
 .in 12
 (a) CMAN believes the node to be online, and
-.br
+.bi
 (b) that node has made enough consecutive, timely writes
 .in 16
 to the quorum disk, and
@@ -448,15 +448,15 @@ for heuristics.  The default score for each heuristic is 1.
 \fIinterval\fP\fB="\fP2\fB"\fP
 .in 12
 This is the frequency (in seconds) at which we poll the heuristic.  The
-default interval for every heuristic is 2 seconds.
+default interval is determined by the qdiskd timeout.
 .in 0
 
 .in 9
 \fItko\fP\fB="\fP1\fB"\fP
 .in 12
 After this many failed attempts to run the heuristic, it is considered DOWN,
-and its score is removed.  The default tko for each heuristic is 1, which 
-may be inadequate for things such as 'ping'.
+and its score is removed.  The default tko for each heuristic is determined
+by the qdiskd timeout.
 .in 8
 \fB/>\fP
 .in 0
@@ -502,7 +502,7 @@ may be inadequate for things such as 'ping'.
 .br
 <quorumd interval="1" tko="10" votes="1" label="testing">
 .in 12
-<heuristic program="ping A -c1 -t1" score="1" interval="2" tko="3"/>
+<heuristic program="ping A -c1 -w1" score="1" interval="2" tko="3"/>
 .br
 .in 8
 </quorumd>

@@ -29,6 +29,7 @@ OBJS1=	fo_domain.o \
 	service_op.o \
 	slang_event.o \
 	event_config.o \
+	update-dbus.o \
 	watchdog.o
 
 OBJS2=	test-noccs.o \
@@ -60,13 +61,19 @@ XML2_LDFLAGS += `xml2-config --libs`
 SLANG_LDFLAGS += -L${slanglibdir} -lslang
 EXTRA_LDFLAGS += -lpthread
 
+# dbus support for notifications
+ifndef disable_dbus
+CFLAGS += -DDBUS `pkg-config --cflags dbus-1`
+DBUS_LDFLAGS += `pkg-config --libs dbus-1`
+endif
+
 LDDEPS += ../clulib/libclulib.a
 
 ${TARGET1}: ${OBJS1} ${LDDEPS}
 	$(CC) -o $@ $^ $(CCS_LDFLAGS) $(CMAN_LDFLAGS) \
 			$(DLM_LDFLAGS) $(XML2_LDFLAGS) \
 			$(SLANG_LDFLAGS) $(EXTRA_LDFLAGS) \
-			$(LOGSYS_LDFLAGS) $(LD_FLAGS)
+			$(LOGSYS_LDFLAGS) $(LD_FLAGS) $(DBUS_LDFLAGS)
 
 #
 # Our test program links against the local allocator so that

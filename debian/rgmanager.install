@@ -8,6 +8,7 @@ usr/sbin/clusvcadm
 usr/sbin/rgmanager
 usr/sbin/rg_test
 usr/share/cluster/follow-service.sl
+usr/share/cluster/checkquorum
 usr/share/cluster/default_event_script.sl
 usr/share/man/man8/clubufflush.8
 usr/share/man/man8/clufindhostname.8

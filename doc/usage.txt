@@ -32,12 +32,10 @@ Or, minimal manual steps:
 
 > modprobe configfs
 > modprobe dlm
-> modprobe gfs2 (if using gfs2)
 > mount -t configfs none /sys/kernel/config
 > cman_tool join
 > fenced
 > dlm_controld
-> gfs_controld (if using gfs2)
 > fence_tool join
 
 
@@ -67,24 +65,3 @@ Or, manually:
 > rgmanager
 
 Create services/resources to be managed in cluster.conf.
-
-
-using gfs2
-----------
-
-Create new file systems, using the cluster name from cluster.conf.  Pick a
-unique name for each fs and select a number of journals greater than or equal
-to the number of nodes that will mount the fs.
-
-> mkfs.gfs2 -p lock_dlm -t <clustername>:<fsname> -j <#journals> <blockdev>
-
-Use the gfs2 init script to automate mounting gfs2 fs's listed in /etc/fstab:
-
-> service gfs2 start
-
-Or, manually:
-
-> mount -t gfs2 <blockdev> <mountpoint>
-
-(Replace "gfs2" with "gfs" everywhere above to use gfs instead of gfs2.)
-

@@ -1,0 +1,29 @@
+.TH "checkquorum" "8" "February 2011" "" "Check Quorum Watchdog Script"
+.SH "NAME"
+checkquorum \- Check Quorum Watchdog Script
+.SH "SYNOPSIS"
+\fBcheckquorum
+.SH "DESCRIPTION"
+.PP 
+The \fBcheckquorum\fP watchdog script, when copied to the
+.IR /etc/watchdog.d
+directory and after enabling/starting the watchdog daemon causes the node to reboot if quorum is
+lost and not regained within a user configurable amount of time (default: 60 seconds).
+.SH "OPTIONS"
+The checkquorum script includes several options which can be set by editing
+the script with a text editor.
+.TP
+.BR $wait_time
+Amount of time in seconds to wait after quorum is lost before trigger a reboot
+(Default: 60 seconds).
+.TP
+.BR $hardreboot
+Instantly reboot the machine without cleanly shutting down the system.
+Useful when the machine may hang on reboot.  Set to 1 to hard reboot the
+system, 0 to do a normal reboot.
+.SH "NOTES"
+\fBcheckquorum\fP should never be called outside of watchdog except for
+debugging purposes.
+
+.SH "SEE ALSO"
+watchdog(8)

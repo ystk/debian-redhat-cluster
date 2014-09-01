@@ -1,0 +1,29 @@
+.TH "ccs_update_schema" "8" "" "" ""
+.SH "NAME"
+ccs_update_schema \- Tool to generate cluster relaxng schema for cluster config validation.
+
+.SH "SYNOPSIS"
+.B ccs_update_schema
+[\fIOPTION\fR]..
+
+.SH "DESCRIPTION"
+
+\fBccs_update_schema\fP is part of the Cluster Configuration System (CCS).
+It is used to update the cluster relaxng schema that validates cluster.conf.
+
+.SH "OPTIONS"
+.TP 
+\fB\-h\fP
+Help.  Print out the usage.
+.TP 
+\fB\-V\fP
+Print the version information.
+.TP
+\fB\-v\fP
+Be verbose. Mostly for debugging purposes.
+.TP
+\fB\-f\fP
+Ignore local stored cache and regenerate a fresh schema.
+
+.SH "SEE ALSO"
+ccs_config_validate(8), cluster.conf(5)

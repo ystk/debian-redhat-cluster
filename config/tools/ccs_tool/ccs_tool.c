@@ -225,6 +225,46 @@ static int tool_main(int argc, char *argv[])
 	    del_node(argc-1, argv+1);
 	    exit(EXIT_SUCCESS);
     }
+    else if(!strcmp(argv[optind], "addservice")){
+	    add_service(argc-1, argv+1);
+	    exit(EXIT_SUCCESS);
+    }
+    else if(!strcmp(argv[optind], "delservice")){
+	    del_node(argc-1, argv+1);
+	    exit(EXIT_SUCCESS);
+    }
+    else if(!strcmp(argv[optind], "addscript")){
+	    add_script(argc-1, argv+1);
+	    exit(EXIT_SUCCESS);
+    }
+    else if(!strcmp(argv[optind], "delscript")){
+	    del_node(argc-1, argv+1);
+	    exit(EXIT_SUCCESS);
+    }
+    else if(!strcmp(argv[optind], "addip")){
+	    add_ip(argc-1, argv+1);
+	    exit(EXIT_SUCCESS);
+    }
+    else if(!strcmp(argv[optind], "delip")){
+	    del_node(argc-1, argv+1);
+	    exit(EXIT_SUCCESS);
+    }
+    else if(!strcmp(argv[optind], "addfs")){
+	    add_fs(argc-1, argv+1);
+	    exit(EXIT_SUCCESS);
+    }
+    else if(!strcmp(argv[optind], "delfs")){
+	    del_node(argc-1, argv+1);
+	    exit(EXIT_SUCCESS);
+    }
+    else if(!strcmp(argv[optind], "addfdomain")){
+	    add_fdomain(argc-1, argv+1);
+	    exit(EXIT_SUCCESS);
+    }
+    else if(!strcmp(argv[optind], "delfdomain")){
+	    del_node(argc-1, argv+1);
+	    exit(EXIT_SUCCESS);
+    }
     else if(!strcmp(argv[optind], "addfence")){
 	    add_fence(argc-1, argv+1);
 	    exit(EXIT_SUCCESS);
@@ -237,8 +277,28 @@ static int tool_main(int argc, char *argv[])
 	    list_nodes(argc-1, argv+1);
 	    exit(EXIT_SUCCESS);
     }
+    else if(!strcmp(argv[optind], "lsservice")){
+	    list_services(argc-1, argv+1);
+	    exit(EXIT_SUCCESS);
+    }
     else if(!strcmp(argv[optind], "lsfence")){
 	    list_fences(argc-1, argv+1);
+	    exit(EXIT_SUCCESS);
+    }
+    else if(!strcmp(argv[optind], "lsscript")){
+	    list_scripts(argc-1, argv+1);
+	    exit(EXIT_SUCCESS);
+    }
+    else if(!strcmp(argv[optind], "lsip")){
+	    list_ips(argc-1, argv+1);
+	    exit(EXIT_SUCCESS);
+    }
+    else if(!strcmp(argv[optind], "lsfs")){
+	    list_fs(argc-1, argv+1);
+	    exit(EXIT_SUCCESS);
+    }
+    else if(!strcmp(argv[optind], "lsfdomains")){
+	    list_fdomains(argc-1, argv+1);
 	    exit(EXIT_SUCCESS);
     }
     else if(!strcmp(argv[optind], "create")){
@@ -279,9 +339,24 @@ static void tool_print_usage(FILE *stream){
 	  "  addnode <node>      Add a node\n"
           "  delnode <node>      Delete a node\n"
           "  lsnode              List nodes\n"
+	  "  addservice <name>   Add a service\n"
+          "  delservice <name>   Delete a service\n"
+          "  lsservice           List services\n"
           "  lsfence             List fence devices\n"
 	  "  addfence <fencedev> Add a new fence device\n"
 	  "  delfence <fencedev> Delete a fence device\n"
+	  "  addscript <name>    Add a script resource\n"
+	  "  delscript <name>    Delete a script resource\n"
+	  "  lsscript            List script resources\n"
+	  "  addip <name>        Add an IP address resource\n"
+	  "  delip <name>        Delete an IP address resource\n"
+	  "  lsip                List IP address resources\n"
+	  "  addfs <name>        Add an filesystem resource\n"
+	  "  delfs <name>        Delete an filesystem resource\n"
+	  "  lsfs                List filesystem resources\n"
+	  "  addfdomain <name>   Add an failover domain\n"
+	  "  delfdomain <name>   Delete an failover domain\n"
+	  "  lsfdomains          List failover domains\n"
 	  "  create              Create a skeleton config file\n"
 	  "  addnodeids          Assign node ID numbers to all nodes\n"
 	  "\n");

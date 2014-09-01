@@ -1002,14 +1002,15 @@ int cman_replyto_shutdown(cman_handle_t handle, int yesno)
 	return 0;
 }
 
-
-int cman_register_quorum_device(cman_handle_t handle, char *name, int votes)
+static int cman_set_quorum_device(cman_handle_t handle,
+				     int ops,
+				     char *name, int votes)
 {
 	struct cman_handle *h = (struct cman_handle *)handle;
 	char buf[strlen(name)+1 + sizeof(int)];
 	VALIDATE_HANDLE(h);
 
-	if (strlen(name) > MAX_CLUSTER_MEMBER_NAME_LEN)
+	if ((!name) || (strlen(name) > MAX_CLUSTER_MEMBER_NAME_LEN) || (votes < 0))
 	{
 		errno = EINVAL;
 		return -1;
@@ -1017,7 +1018,12 @@ int cman_register_quorum_device(cman_handle_t handle, char *name, int votes)
 
 	memcpy(buf, &votes, sizeof(int));
 	strcpy(buf+sizeof(int), name);
-	return info_call(h, CMAN_CMD_REG_QUORUMDEV, buf, strlen(name)+1+sizeof(int), NULL, 0);
+	return info_call(h, ops, buf, strlen(name)+1+sizeof(int), NULL, 0);
+}
+
+int cman_register_quorum_device(cman_handle_t handle, char *name, int votes)
+{
+	return cman_set_quorum_device(handle, CMAN_CMD_REG_QUORUMDEV, name, votes);
 }
 
 int cman_unregister_quorum_device(cman_handle_t handle)
@@ -1051,6 +1057,11 @@ int cman_get_quorum_device(cman_handle_t handle, struct cman_qdev_info *info)
 		info->qi_votes = cman_node.votes;
 	}
 	return ret;
+}
+
+int cman_update_quorum_device(cman_handle_t handle, char *name, int votes)
+{
+	return cman_set_quorum_device(handle, CMAN_CMD_UPDATE_QUORUMDEV, name, votes);
 }
 
 int cman_get_fenceinfo(cman_handle_t handle, int nodeid, uint64_t *time, int *fenced, char *agent)

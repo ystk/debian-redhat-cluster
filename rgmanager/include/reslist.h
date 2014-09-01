@@ -28,12 +28,15 @@
 				  resource class if you delete it from
 				  the configuration */
 #define RF_ENFORCE_TIMEOUTS (1<<9) /** Enforce timeouts for this node */
+#define RF_NON_CRITICAL (1<<10) /** stop this resource if it fails */
+#define RF_QUIESCE	(1<<11) /** don't restart this resource */
 
 
 
 #define RES_STOPPED	(0)
 #define RES_STARTED	(1)
 #define RES_FAILED	(2)
+#define RES_DISABLED	(3)
 
 #ifndef SHAREDIR
 #define SHAREDIR		"/usr/share/rgmanager"
@@ -42,6 +45,7 @@
 #define RESOURCE_ROOTDIR	SHAREDIR
 #define RESOURCE_TREE_ROOT	"/cluster/rm"
 #define RESOURCE_BASE		RESOURCE_TREE_ROOT "/resources"
+#define RESOURCE_DEFAULTS	RESOURCE_TREE_ROOT "/resource-defaults"
 #define RESOURCE_ROOT_FMT 	RESOURCE_TREE_ROOT "/%s[%d]"
 
 #define RESOURCE_MAX_LEVELS	100
@@ -127,6 +131,7 @@ int res_start(resource_node_t **tree, resource_t *res, void *ret);
 int res_stop(resource_node_t **tree, resource_t *res, void *ret);
 int res_status(resource_node_t **tree, resource_t *res, void *ret);
 int res_status_inquiry(resource_node_t **tree, resource_t *res, void *ret);
+int res_convalesce(resource_node_t **tree, resource_t *res, void *ret);
 int res_condstart(resource_node_t **tree, resource_t *res, void *ret);
 int res_condstop(resource_node_t **tree, resource_t *res, void *ret);
 int res_exec(resource_node_t *node, int op, const char *arg, int depth);
@@ -146,6 +151,7 @@ int resource_tree_delta(resource_node_t **, resource_node_t **);
    Load/kill resource rule sets
  */
 int load_resource_rules(const char *rpath, resource_rule_t **rules);
+int load_resource_defaults(int ccsfd, resource_rule_t **rules);
 void print_resource_rule(FILE *fp, resource_rule_t *rule);
 void print_resource_rules(resource_rule_t **rules);
 void dump_resource_rules(FILE *fp, resource_rule_t **rules);

@@ -683,7 +683,7 @@ eval_groups(int local, uint32_t nodeid, int nodeStatus)
 	resource_node_t *node;
 	rg_state_t svcStatus;
 	cluster_member_list_t *membership;
-	int ret;
+	int ret, state_updated = 0;
 
 	if (rg_locked()) {
 		logt_print(LOG_DEBUG,
@@ -700,6 +700,7 @@ eval_groups(int local, uint32_t nodeid, int nodeStatus)
 
 	list_do(&_tree, node) {
 
+		state_updated = 0;
 		res_build_name(svcName, sizeof(svcName), node->rn_resource);
 
 		/*
@@ -723,7 +724,43 @@ eval_groups(int local, uint32_t nodeid, int nodeStatus)
 			continue;
 		}
 
+		/* Mark the service as stopped if applicable */
+		if ((svcStatus.rs_owner == nodeid && !nodeStatus) &&
+		    (svcStatus.rs_state == RG_STATE_STARTED ||
+		     svcStatus.rs_state == RG_STATE_RECOVER ||
+		     svcStatus.rs_state == RG_STATE_STARTING ||
+		     svcStatus.rs_state == RG_STATE_STOPPING )) {
+
+			logt_print(LOG_DEBUG,
+				   "Marking %s on down member %d as stopped",
+				   svcName, nodeid);
+
+			svcStatus.rs_last_owner = svcStatus.rs_owner;
+			svcStatus.rs_state = RG_STATE_STOPPED;
+			svcStatus.rs_owner = 0;
+			svcStatus.rs_transition = (uint64_t)time(NULL);
+			/* If host fails, we need to remember
+			 * frozen flag */
+			svcStatus.rs_flags &= RG_FLAG_FROZEN;
+
+			if (set_rg_state(svcName, &svcStatus) != 0) {
+				logt_print(LOG_ERR, "Failed to update state"
+					   " of %s during recovery; cannot "
+					   "fail over", svcName);
+				rg_unlock(&lockp);
+				continue;
+			}
+
+			state_updated = 1;
+		}
+
 		rg_unlock(&lockp);
+
+		if (state_updated) {
+			/* don't do this with lock held */
+			broadcast_event(svcName, RG_STATE_STOPPED, -1,
+					svcStatus.rs_last_owner);
+		}
 
 		if (svcStatus.rs_owner == 0)
 			nodeName = (char *)"none";
@@ -974,6 +1011,9 @@ group_op(const char *groupname, int op)
 		break;
 	case RG_CONDSTART:
 		ret = res_condstart(&_tree, res, NULL);
+		break;
+	case RG_CONVALESCE:
+		ret = res_convalesce(&_tree, res, NULL);
 		break;
 	}
 	pthread_rwlock_unlock(&resource_lock);
@@ -1273,13 +1313,21 @@ svc_exists(const char *svcname)
 }
 
 
-void
+/*
+ * Perform an operation on all resources groups.
+ *
+ * Returns the number of requests queued.  This value is
+ * only used during shutdown, where we queue RG_STOP_EXITING
+ * only for services we have running locally as an optimization.
+ */
+int
 rg_doall(int request, int block,
 	 const char __attribute__ ((unused)) *debugfmt)
 {
 	resource_node_t *curr;
 	rg_state_t svcblk;
 	char rg[64];
+	int queued = 0;
 
 	pthread_rwlock_rdlock(&resource_lock);
 	list_do(&_tree, curr) {
@@ -1304,6 +1352,7 @@ rg_doall(int request, int block,
 
 		rt_enqueue_request(rg, request, NULL, 0,
 				   0, 0, 0);
+		++queued;
 	} while (!list_done(&_tree, curr));
 
 	pthread_rwlock_unlock(&resource_lock);
@@ -1313,6 +1362,7 @@ rg_doall(int request, int block,
 	   other rgmanagers to complete. */
 	if (block) 
 		rg_wait_threads();
+	return queued;
 }
 
 
@@ -1670,8 +1720,6 @@ init_resource_groups(int reconfigure, int do_init)
 		free(val);
 	}
 
-	/* Wait for any pending requests */
-	rg_wait_threads();
 	/* Block operations that would break during configuration
 	   changes */
 	rg_clear_initialized(FL_CONFIG);
@@ -1685,6 +1733,8 @@ init_resource_groups(int reconfigure, int do_init)
 		ccs_unlock(fd);
 		return -1;
 	}
+
+	load_resource_defaults(fd, &rulelist);
 
 	if (build_resource_tree(fd, &tree, &rulelist, &reslist) != 0) {
 		logt_print(LOG_CRIT, "#7: Error building resource tree\n");

@@ -41,23 +41,11 @@ ifdef INITDT
 	done
 endif
 ifdef UDEVT
-	install -d ${DESTDIR}/etc/udev/rules.d
+	install -d ${DESTDIR}/lib/udev/rules.d
 	set -e; \
 	for i in ${UDEVT}; do \
-		install -m644 $(S)/$$i ${DESTDIR}/etc/udev/rules.d; \
+		install -m644 $(S)/$$i ${DESTDIR}/lib/udev/rules.d; \
 	done
-endif
-ifdef KMODT
-	install -d ${module_dir}/${KDIRT}
-	install -m644 ${KMODT} ${module_dir}/${KDIRT}
-endif
-ifdef KHEADT
-	install -d ${incdir}/linux
-	install -m644 ${KHEADT} ${incdir}/linux
-endif
-ifdef FENCEAGENTSLIB
-	install -d ${DESTDIR}/${fenceagentslibdir}
-	install -m644 ${FENCEAGENTSLIB} ${DESTDIR}/${fenceagentslibdir}
 endif
 ifdef DOCS
 	install -d ${docdir}
@@ -78,15 +66,27 @@ ifdef PKGCONF
 	install -d ${pkgconfigdir}
 	install -m644 ${PKGCONF} ${pkgconfigdir}
 endif
+ifdef SHAREDIRTEX
+	install -d ${sharedir}
+	install -m755 ${SHAREDIRTEX} ${sharedir}
+endif
 ifdef SHAREDIRT
 	install -d ${sharedir}
 	install -m644 ${SHAREDIRT} ${sharedir}
+endif
+ifdef SHAREDIRSYMT
+	install -d ${sharedir}
+	cp -a ${SHAREDIRSYMT} ${sharedir}
+endif
+ifdef RELAXNGDIRT
+	install -d ${sharedir}/relaxng
+	install -m644 ${RELAXNGDIRT} ${sharedir}/relaxng
 endif
 ifdef MANTARGET
 	set -e; \
 	for i in ${MANTARGET}; do \
 		p=`echo $$i | sed -e 's#.*\.##g'`; \
 		install -d ${mandir}/man$$p; \
-		install -m644 $(S)/$$i ${mandir}/man$$p; \
+		install -m644 $$i ${mandir}/man$$p; \
 	done
 endif

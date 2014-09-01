@@ -7,10 +7,10 @@ Subject: [PATCH] Depend on $remote_fs
  rgmanager/init.d/rgmanager.in |    4 ++--
  2 files changed, 4 insertions(+), 4 deletions(-)
 
-diff --git a/cman/init.d/cman.in b/cman/init.d/cman.in
-index 8335c2b..ce8c5ff 100644
---- a/cman/init.d/cman.in
-+++ b/cman/init.d/cman.in
+Index: redhat-cluster-3.1.8/cman/init.d/cman.in
+===================================================================
+--- redhat-cluster-3.1.8.orig/cman/init.d/cman.in	2012-07-05 13:24:12.594801406 -0400
++++ redhat-cluster-3.1.8/cman/init.d/cman.in	2012-07-05 13:24:12.610801402 -0400
 @@ -8,8 +8,8 @@
  #
  ### BEGIN INIT INFO
@@ -22,10 +22,10 @@ index 8335c2b..ce8c5ff 100644
  # Default-Start:	S
  # Default-Stop: 	0 6
  # Short-Description:	Starts and stops cman
-diff --git a/rgmanager/init.d/rgmanager.in b/rgmanager/init.d/rgmanager.in
-index 3b283fe..0148984 100644
---- a/rgmanager/init.d/rgmanager.in
-+++ b/rgmanager/init.d/rgmanager.in
+Index: redhat-cluster-3.1.8/rgmanager/init.d/rgmanager.in
+===================================================================
+--- redhat-cluster-3.1.8.orig/rgmanager/init.d/rgmanager.in	2012-07-05 13:24:12.594801406 -0400
++++ redhat-cluster-3.1.8/rgmanager/init.d/rgmanager.in	2012-07-05 13:24:12.614801402 -0400
 @@ -6,8 +6,8 @@
  #
  ### BEGIN INIT INFO
@@ -37,4 +37,3 @@ index 3b283fe..0148984 100644
  # Default-Start:	S
  # Default-Stop: 	0 6
  # Short-Description:	Starts and stops Red Hat Service (resource group) Manager
--- 

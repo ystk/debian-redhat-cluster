@@ -49,6 +49,8 @@ do_lock_req(int req)
 	int me;
 	generic_msg_hdr hdr;
 
+	ctx.type = -1;
+
 	ch = cman_init(NULL);
 	if (!ch) {
 		printf("Could not connect to cluster service\n");
@@ -167,6 +169,9 @@ printf("  -Z <group>             Freeze resource group.  This prevents\n"
        "                         stopping the whole service.\n");
 printf("  -U <group>             Unfreeze (thaw) resource group.  Restores\n"
        "                         a group to normal operation.\n");
+printf("  -c <group>             Convalesce (repair, fix) resource group.\n"
+       "                         Attempts to start failed, non-critical \n"
+       "                         resources within a resource group.\n");
 
 printf("Resource Group Locking (for cluster Shutdown / Debugging):\n");
 printf("  -l                     Lock local resource group managers.\n"
@@ -235,7 +240,7 @@ main(int argc, char **argv)
 	const char *actionstr = NULL;
 	cluster_member_list_t *membership;
 
-	while ((opt = getopt(argc, argv, "lSue:M:d:r:n:m:FvR:s:Z:U:qh?")) != EOF) {
+	while ((opt = getopt(argc, argv, "lSue:M:d:r:n:c:m:FvR:s:Z:U:qh?")) != EOF) {
 		switch (opt) {
 		case 'l':
 			return do_lock();
@@ -310,6 +315,11 @@ main(int argc, char **argv)
 		case 'U':
 			actionstr = "unfreezing";
 			action = RG_UNFREEZE;
+			svcname = optarg;
+			break;
+		case 'c':
+			actionstr = "convalescing";
+			action = RG_CONVALESCE;
 			svcname = optarg;
 			break;
 		case 'q':

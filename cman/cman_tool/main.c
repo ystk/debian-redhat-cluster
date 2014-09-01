@@ -4,13 +4,15 @@
 #include <time.h>
 #include <corosync/confdb.h>
 #include <netinet/in.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include "copyright.cf"
 #include "libcman.h"
 #include "cman_tool.h"
 
 #define DEFAULT_CONFIG_MODULE "xmlconfig"
 
-#define OPTION_STRING		("m:n:v:e:2p:c:r:i:N:t:o:k:F:C:VAPwfqah?XD::Sd::")
+#define OPTION_STRING		("m:n:v:e:2p:c:i:N:t:o:k:F:C:VAPwfqazh?XD::Sd::r::")
 #define OP_JOIN			1
 #define OP_LEAVE		2
 #define OP_EXPECTED		3
@@ -60,6 +62,7 @@ static void print_usage(int subcmd)
 		printf("  -D<fail|warn|none> What to do about the config. Default (without -D) is to\n");
 		printf("                   validate the config. with -D no validation will be done.\n");
 		printf("                   -Dwarn will print errors but allow the operation to continue.\n");
+		printf("  -z		   Disable stderr debugging output.\n");
 		printf("\n");
 	}
 
@@ -118,7 +121,7 @@ static void print_usage(int subcmd)
 
 	if (!subcmd || subcmd == OP_VERSION) {
 		printf("version\n");
-		printf("  -r <config>      A new config version to set on all members\n");
+		printf("  -r               Reload cluster.conf and update config version.\n");
 		printf("  -D <fail,warn,none> What to do about the config. Default (without -D) is to\n");
 		printf("                   validate the config. with -D no validation will be done. -Dwarn will print errors\n");
 		printf("                   but allow the operation to continue\n");
@@ -649,11 +652,12 @@ static void set_votes(commandline_t *comline)
 	cman_finish(h);
 }
 
-static int validate_config(commandline_t *comline)
+static int validate_config(commandline_t *comline, int current_version)
 {
 	struct stat st;
 	char command[PATH_MAX];
 	char validator[PATH_MAX];
+	char ccs_quiet[8];
 	int cmd_res;
 
 	/* Look for ccs_config_validate */
@@ -663,14 +667,26 @@ static int validate_config(commandline_t *comline)
 		return 0;
 	}
 
-	snprintf(command, sizeof(command), "%s -q", validator);
+	if (comline->verbose > 1) {
+		snprintf(ccs_quiet, sizeof(ccs_quiet), " ");
+	} else {
+		snprintf(ccs_quiet, sizeof(ccs_quiet), "-q");
+	}
+
+	if (current_version) {
+		snprintf(command, sizeof(command), "%s %s -R %d",
+			 validator, ccs_quiet, current_version);
+	} else {
+		snprintf(command, sizeof(command), "%s %s",
+			 validator, ccs_quiet);
+	}
 
 	if (comline->verbose > 1)
 		printf("calling '%s'\n", command);
 
 	cmd_res = system(command);
 
-	return cmd_res;
+	return WEXITSTATUS(cmd_res);
 }
 
 /* Here we set the COROSYNC_ variables that might be needed by the corosync
@@ -759,9 +775,19 @@ static void version(commandline_t *comline)
 
 		if (comline->verbose)
 			printf("Validating configuration\n");
-		if (validate_config(comline) &&
-		    comline->config_validate_opt == VALIDATE_FAIL)
-			die("Not reloading, configuration is not valid\n");
+		result = validate_config(comline, ver.cv_config);
+		if (result == 253)
+			/* Unable to find new config version */
+			die("Unable to retrive the new config version\n");
+		if (result == 254)
+			/* Config regression = fail. */
+			die("Not reloading, config version older or equal the running config");
+		if (result == 255)
+			/* Generic error from ccs_config_validate */
+			die("Not reloading, generic error running ccs_config_validate\n"
+			    "Try re-running with -d options");
+		else if (result && comline->config_validate_opt == VALIDATE_FAIL)
+			die("Not reloading, configuration is not valid");
 	}
 
 	/* We don't bother looking for ccs_sync here - just assume it's in /usr/bin and
@@ -783,8 +809,17 @@ static void version(commandline_t *comline)
 
 	ver.cv_config = comline->config_version;
 
-	if ((result = cman_set_version(h, &ver)))
-		die("can't set version: %s", cman_error(errno));
+	result = cman_set_version(h, &ver);
+
+	switch(result) {
+		case 0:
+			if (comline->verbose)
+				printf("Configuration succesfully updated or already running\n");
+		break;
+		default:
+			die("Error loading configuration in corosync/cman");
+		break;
+	}
  out:
 	cman_finish(h);
 }
@@ -876,6 +911,7 @@ static void decode_arguments(int argc, char *argv[], commandline_t *comline)
 	int optchar, i;
 	int suboptchar;
 	int show_help = 0;
+	char buf[16];
 
 	while (cont) {
 		optchar = getopt(argc, argv, OPTION_STRING);
@@ -943,8 +979,13 @@ static void decode_arguments(int argc, char *argv[], commandline_t *comline)
 			break;
 
 		case 'r':
-			comline->config_version = get_int_arg(optchar, optarg);
+			comline->config_version = 0;
 			comline->config_version_opt = TRUE;
+			if (optarg) {
+				fprintf(stderr, "Warning: specifying a "
+					"version for the -r flag is "
+				        "deprecated and no longer used\n");
+			}
 			break;
 
 		case 'v':
@@ -1005,6 +1046,10 @@ static void decode_arguments(int argc, char *argv[], commandline_t *comline)
 				comline->verbose = atoi(optarg);
 			else
 				comline->verbose = 255;
+			break;
+
+		case 'z':
+			comline->nostderr_debug = 1;
 			break;
 
 		case 'w':
@@ -1092,8 +1137,19 @@ static void decode_arguments(int argc, char *argv[], commandline_t *comline)
 			comline->remove = TRUE;
 		} else if (strcmp(argv[optind], "force") == 0) {
 			comline->force = TRUE;
-		} else
-			die("unknown option %s", argv[optind]);
+		} else {
+			snprintf(buf, sizeof(buf),
+				 "%d", atoi(argv[optind]));
+			if (!strcmp(buf, argv[optind]) &&
+			    (comline->config_version_opt == TRUE) &&
+			     comline->operation == OP_VERSION) {
+				fprintf(stderr, "Warning: specifying a "
+					"version for the -r flag is "
+				        "deprecated and no longer used\n");
+			} else {
+				die("unknown option %s", argv[optind]);
+			}
+		}
 
 		optind++;
 	}
@@ -1150,7 +1206,7 @@ static void do_join(commandline_t *comline, char *envp[])
 		if (comline->verbose)
 			printf("Validating configuration\n");
 
-		if (validate_config(comline) &&
+		if (validate_config(comline, 0) &&
 		    comline->config_validate_opt == VALIDATE_FAIL)
 			die("Not joining, configuration is not valid\n");
 	}

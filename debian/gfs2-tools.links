@@ -1,5 +1,0 @@
-sbin/fsck.gfs2 sbin/gfs2_fsck
-sbin/mkfs.gfs2 sbin/gfs2_mkfs
-sbin/mkfs.gfs2 sbin/gfs2_jadd
-sbin/mkfs.gfs2 sbin/gfs2_grow
-sbin/mount.gfs2 sbin/gfs2_mount

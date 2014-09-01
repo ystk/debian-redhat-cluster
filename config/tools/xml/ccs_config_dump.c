@@ -25,9 +25,35 @@ static int dump_objdb_buff(confdb_handle_t dump_handle, hdb_handle_t cluster_han
 	while (confdb_key_iter(dump_handle, parent_object_handle, key_name,
 				&key_name_len, key_value,
 				&key_value_len) == CS_OK) {
+		int char_pos = 0;
+
 		key_name[key_name_len] = '\0';
 		key_value[key_value_len] = '\0';
-		printf(" %s=\"%s\"", key_name, key_value);
+		printf(" %s=\"", key_name);
+		for (char_pos = 0; char_pos < key_value_len-1; char_pos++) {
+			switch (key_value[char_pos]) {
+
+			case '&':
+				printf("&amp;");
+				break;
+			case '<':
+				printf("&lt;");
+				break; 
+			case '>':
+				printf("&gt;");
+				break; 
+			case '"':
+				printf("&quot;");
+				break;
+			case '\'':
+				printf("&apos;");
+				break;
+			default:
+				putchar(key_value[char_pos]);
+				break;
+			}
+		}
+		printf("\"");
 	}
 
 	if (confdb_object_iter_start(dump_handle, parent_object_handle) != CS_OK)

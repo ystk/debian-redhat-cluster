@@ -25,7 +25,7 @@ void kill_resource_groups(void);
 
 /* do this op on all resource groups.  The handler for the request 
    will sort out whether or not it's a valid request given the state */
-void rg_doall(int request, int block, const char *debugfmt);
+int rg_doall(int request, int block, const char *debugfmt);
 void do_status_checks(void); /* Queue status checks for locally running
 				services */
 

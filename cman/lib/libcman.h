@@ -420,6 +420,9 @@ int cman_barrier_delete(cman_handle_t handle, const char *name);
 /*
  * Add your own quorum device here, needs an admin socket
  *
+ * register_quorum and update_quorum arguments are mandatory.
+ * name has to be a valid null-terminated string and votes >= 0.
+ *
  * After creating a quorum device you will need to call 'poll_quorum_device'
  * at least once every (default) 10 seconds (this can be changed in CCS)
  * otherwise it will time-out and the cluster will lose its vote.
@@ -428,6 +431,7 @@ int cman_register_quorum_device(cman_handle_t handle, char *name, int votes);
 int cman_unregister_quorum_device(cman_handle_t handle);
 int cman_poll_quorum_device(cman_handle_t handle, int isavailable);
 int cman_get_quorum_device(cman_handle_t handle, struct cman_qdev_info *info);
+int cman_update_quorum_device(cman_handle_t handle, char *name, int votes);
 
 /*
  * Sets the dirty bit inside cman. This indicates that the node has

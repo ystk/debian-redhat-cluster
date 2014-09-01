@@ -29,6 +29,13 @@
 
 #define MAX_PATH_LEN PATH_MAX
 
+enum tx_mech {
+	TX_MECH_UDP,
+	TX_MECH_UDPB,
+	TX_MECH_UDPU,
+	TX_MECH_RDMA,
+};
+
 static unsigned int debug;
 static int cmanpre_readconfig(struct objdb_iface_ver0 *objdb, const char **error_string);
 static int cmanpre_reloadconfig(struct objdb_iface_ver0 *objdb, int flush, const char **error_string);
@@ -43,14 +50,19 @@ static char nodename[MAX_CLUSTER_MEMBER_NAME_LEN];
 static int nodeid;
 static int two_node;
 static unsigned int disable_openais;
-static unsigned int portnum;
 static int num_nodenames;
 static char *key_filename=NULL;
-static char *mcast_name;
 static char *cluster_name;
 static char error_reason[1024] = { '\0' };
 static hdb_handle_t cluster_parent_handle;
 static int use_hashed_cluster_id = 0;
+static unsigned int portnum = 0;
+static unsigned int altportnum = 0;
+static char *mcast_name = NULL;
+static char *altmcast_name = NULL;
+static unsigned int ttl = 1;
+static unsigned int altttl = 1;
+
 
 /*
  * Exports the interface for the service
@@ -219,15 +231,79 @@ static hdb_handle_t find_cman_logger(struct objdb_iface_ver0 *objdb, hdb_handle_
 
 }
 
+static int add_udpu_members(struct objdb_iface_ver0 *objdb, hdb_handle_t interface_object_handle)
+{
+	char *cur_nodename;
+	hdb_handle_t altname_handle;
+	hdb_handle_t find_handle = 0;
+	hdb_handle_t find_handle2 = 0;
+	hdb_handle_t member_object_handle;
+	hdb_handle_t nodes_handle;
+	int cur_altname_depth;
 
-static int add_ifaddr(struct objdb_iface_ver0 *objdb, char *mcast, char *ifaddr, int port, int broadcast)
+	nodes_handle = nodeslist_init(objdb, cluster_parent_handle, &find_handle);
+	while (nodes_handle) {
+		if (num_interfaces == 0) {
+			if (objdb_get_string(objdb, nodes_handle, "name", &cur_nodename)) {
+				nodes_handle = nodeslist_next(objdb, find_handle);
+				continue;
+			}
+		} else {
+			objdb->object_find_create(nodes_handle, "altname", strlen("altname"), &find_handle2);
+
+			cur_altname_depth = 0;
+			while (objdb->object_find_next(find_handle2, &altname_handle) == 0 &&
+			   cur_altname_depth < num_interfaces)
+				cur_altname_depth++;
+
+			if (cur_altname_depth == num_interfaces) {
+				if (objdb_get_string(objdb, altname_handle, "name", &cur_nodename)) {
+					nodes_handle = nodeslist_next(objdb, find_handle);
+					continue;
+				}
+			} else {
+				nodes_handle = nodeslist_next(objdb, find_handle);
+				continue;
+			}
+			objdb->object_find_destroy(find_handle2);
+		}
+
+		if (objdb->object_create(interface_object_handle, &member_object_handle,
+					 "member", strlen("member")) == 0) {
+			objdb->object_key_create_typed(member_object_handle, "memberaddr",
+						       cur_nodename, strlen(cur_nodename)+1, OBJDB_VALUETYPE_STRING);
+		}
+
+		nodes_handle = nodeslist_next(objdb, find_handle);
+	}
+	objdb->object_find_destroy(find_handle);
+
+	return 0;
+}
+
+#define PRIMARY_IFACE	0
+#define ALT_IFACE	1
+
+static int add_ifaddr(struct objdb_iface_ver0 *objdb, char *mcast, char *ifaddr, int port, int intttl, int altiface, enum tx_mech transport)
 {
 	hdb_handle_t totem_object_handle;
 	hdb_handle_t find_handle;
 	hdb_handle_t interface_object_handle;
 	struct sockaddr_storage if_addr, localhost, mcast_addr;
 	char tmp[132];
+	char *transportstr;
 	int ret = 0;
+	const char *tx_mech_to_str[] = {
+		[TX_MECH_UDP] = "udp",
+		[TX_MECH_UDPB] = "udp",
+		[TX_MECH_UDPU] = "udpu",
+		[TX_MECH_RDMA] = "iba",
+	};
+
+	if (num_interfaces >= 2) {
+		snprintf(error_reason, sizeof(error_reason) - 1, "Configuration of more than 2 rings is not supported");
+		return -1;
+	}
 
 	/* Check the families match */
 	if (address_family(mcast, &mcast_addr, 0) !=
@@ -245,11 +321,20 @@ static int add_ifaddr(struct objdb_iface_ver0 *objdb, char *mcast, char *ifaddr,
 
 	objdb->object_find_create(OBJECT_PARENT_HANDLE, "totem", strlen("totem"), &find_handle);
 	if (objdb->object_find_next(find_handle, &totem_object_handle)) {
-
 		objdb->object_create(OBJECT_PARENT_HANDLE, &totem_object_handle,
 				     "totem", strlen("totem"));
-        }
+	}
 	objdb->object_find_destroy(find_handle);
+
+	if (!altiface) {
+		if (objdb_get_string(objdb, totem_object_handle, "transport", &transportstr)) {
+			objdb->object_key_create_typed(totem_object_handle, "transport",
+				tx_mech_to_str[transport], strlen(tx_mech_to_str[transport]) + 1, OBJDB_VALUETYPE_STRING);
+		} else {
+			sprintf(error_reason, "Transport should not be specified within <totem .../>, use <cman transport=\"...\" /> instead");
+			return -1;
+		}
+	}
 
 	if (objdb->object_create(totem_object_handle, &interface_object_handle,
 				 "interface", strlen("interface")) == 0) {
@@ -269,16 +354,37 @@ static int add_ifaddr(struct objdb_iface_ver0 *objdb, char *mcast, char *ifaddr,
 		objdb->object_key_create_typed(interface_object_handle, "bindnetaddr",
 					       tmp, strlen(tmp)+1, OBJDB_VALUETYPE_STRING);
 
-		if (broadcast)
+		switch (transport) {
+		case TX_MECH_UDPB:
 			objdb->object_key_create_typed(interface_object_handle, "broadcast",
 						       "yes", strlen("yes")+1, OBJDB_VALUETYPE_STRING);
-		else
+			break;
+		case TX_MECH_UDP:
+		case TX_MECH_RDMA:
 		        objdb->object_key_create_typed(interface_object_handle, "mcastaddr",
 						       mcast, strlen(mcast)+1, OBJDB_VALUETYPE_STRING);
+			break;
+		case TX_MECH_UDPU:
+			add_udpu_members(objdb, interface_object_handle);
+			break;
+		}
 
 		sprintf(tmp, "%d", port);
 		objdb->object_key_create_typed(interface_object_handle, "mcastport",
 					       tmp, strlen(tmp)+1, OBJDB_VALUETYPE_STRING);
+
+		/* paranoia check. corosync already does it */
+		if ((intttl < 0) || (intttl > 255)) {
+			sprintf(error_reason, "TTL value (%u) out of range (0 - 255)", intttl);
+			return -1;
+		}
+
+		/* add the key to the objdb only if value is not default */
+		if (intttl != 1) {
+			sprintf(tmp, "%d", intttl);
+			objdb->object_key_create_typed(interface_object_handle, "ttl",
+						       tmp, strlen(tmp)+1, OBJDB_VALUETYPE_STRING);
+		}
 
 		num_interfaces++;
 	}
@@ -297,13 +403,14 @@ static uint16_t generate_cluster_id(char *name)
 	return value & 0xFFFF;
 }
 
-static char *default_mcast(char *node, uint16_t clusterid)
+static char *default_mcast(char *node, int altiface)
 {
         struct addrinfo *ainfo;
         struct addrinfo ahints;
 	int ret;
 	int family;
 	static char addr[132];
+	uint16_t clusterid = cluster_id + altiface;
 
         memset(&ahints, 0, sizeof(ahints));
 
@@ -321,11 +428,11 @@ static char *default_mcast(char *node, uint16_t clusterid)
 
 	if (family == AF_INET) {
 		snprintf(addr, sizeof(addr), "239.192.%d.%d", clusterid >> 8, clusterid % 0xFF);
-		return addr;
+		return strdup(addr);
 	}
 	if (family == AF_INET6) {
 		snprintf(addr, sizeof(addr), "ff15::%x", clusterid);
-		return addr;
+		return strdup(addr);
 	}
 
 	return NULL;
@@ -471,6 +578,11 @@ static int get_env_overrides(void)
 		portnum = atoi(getenv("CMAN_IP_PORT"));
 	}
 
+	/* optional alternate port */
+	if (getenv("CMAN_IP_ALTPORT")) {
+		altportnum = atoi(getenv("CMAN_IP_ALTPORT"));
+	}
+
 	/* optional security key filename */
 	if (getenv("CMAN_KEYFILE")) {
 		key_filename = strdup(getenv("CMAN_KEYFILE"));
@@ -494,6 +606,10 @@ static int get_env_overrides(void)
 		mcast_name = getenv("CMAN_MCAST_ADDR");
 	}
 
+	if (getenv("CMAN_ALTMCAST_ADDR")) {
+		altmcast_name = getenv("CMAN_ALTMCAST_ADDR");
+	}
+
 	if (getenv("CMAN_2NODE")) {
 		two_node = 1;
 		expected_votes = 1;
@@ -515,10 +631,15 @@ static int get_nodename(struct objdb_iface_ver0 *objdb)
 	hdb_handle_t object_handle;
 	hdb_handle_t find_handle;
 	hdb_handle_t node_object_handle;
+	hdb_handle_t mcast_handle;
 	hdb_handle_t alt_object;
-	int broadcast = 0;
+	enum tx_mech transport = TX_MECH_UDP;
 	char *str;
 	int error;
+	unsigned int mcast_portnum = DEFAULT_PORT;
+	unsigned int altmcast_portnum = DEFAULT_PORT;
+	char *altmcast_name_tmp = NULL;
+	int broadcast = 0;
 
 	if (!getenv("CMAN_NOCONFIG")) {
 		/* our nodename */
@@ -567,7 +688,7 @@ static int get_nodename(struct objdb_iface_ver0 *objdb)
 	}
 
 	/* Add <cman> bits to pass down to the main module*/
-	if ( (node_object_handle = nodelist_byname(objdb, cluster_parent_handle, nodename))) {
+	if ((node_object_handle = nodelist_byname(objdb, cluster_parent_handle, nodename))) {
 		if (objdb_get_string(objdb, node_object_handle, "nodeid", &nodeid_str)) {
 			sprintf(error_reason, "This node has no nodeid in cluster.conf");
 			write_cman_pipe("This node has no nodeid in cluster.conf");
@@ -576,57 +697,107 @@ static int get_nodename(struct objdb_iface_ver0 *objdb)
 	}
 
 	objdb->object_find_create(cluster_parent_handle, "cman", strlen("cman"), &find_handle);
-
-	if (objdb->object_find_next(find_handle, &object_handle) == 0) {
-
-		hdb_handle_t mcast_handle;
-		hdb_handle_t find_handle2;
-
-		if (!mcast_name) {
-
-			objdb->object_find_create(object_handle, "multicast", strlen("multicast"), &find_handle2);
-			if (objdb->object_find_next(find_handle2, &mcast_handle) == 0) {
-
-				objdb_get_string(objdb, mcast_handle, "addr", &mcast_name);
-			}
-			objdb->object_find_destroy(find_handle2);
-		}
-
-		if (!mcast_name) {
-			mcast_name = default_mcast(nodename, cluster_id);
-
-		}
-		if (!mcast_name)
-			return -1;
-
-		/* See if the user wants our default set of openais services (default=yes) */
-		objdb_get_int(objdb, object_handle, "disable_openais", &disable_openais, 0);
-
-		objdb->object_key_create_typed(object_handle, "nodename",
-					       nodename, strlen(nodename)+1, OBJDB_VALUETYPE_STRING);
+	if (objdb->object_find_next(find_handle, &object_handle)) {
+		sprintf(error_reason, "Unable to find cman in config db");
+		write_cman_pipe(error_reason);
+		return -1;
 	}
 	objdb->object_find_destroy(find_handle);
+
+	/* Check for broadcast */
+	if (!objdb_get_string(objdb, object_handle, "broadcast", &str)) {
+		if (strcmp(str, "yes") == 0) {
+			broadcast = 1;
+			transport = TX_MECH_UDPB;
+		}
+	}
+
+	/* Check for transport */
+	if (!objdb_get_string(objdb, object_handle, "transport", &str)) {
+		if ((broadcast) && (strcmp(str, "udpb"))) {
+			sprintf(error_reason, "Transport and broadcast option are mutually exclusive");
+			write_cman_pipe(error_reason);
+			return -1;
+		}
+		if (strcmp(str, "udp") == 0) {
+			transport = TX_MECH_UDP;
+		} else if (strcmp(str, "udpb") == 0) {
+			broadcast = 1;
+			transport = TX_MECH_UDPB;
+		} else if (strcmp(str, "udpu") == 0) {
+			transport = TX_MECH_UDPU;
+		} else if (strcmp(str, "rdma") == 0) {
+			transport = TX_MECH_RDMA;
+		} else {
+			sprintf(error_reason, "Transport option value can be one of udp, udpb, udpu, rdma");
+			write_cman_pipe(error_reason);
+			return -1;
+		}
+	}
+
+	if (broadcast) {
+		mcast_name = strdup("255.255.255.255");
+		if (!mcast_name) {
+			sprintf(error_reason, "Unable to set mcast_name");
+			write_cman_pipe(error_reason);
+			return -1; 
+		}
+		altmcast_name = strdup("255.255.255.255");
+		if (!altmcast_name) {
+			sprintf(error_reason, "Unable to set altmcast_name");
+			write_cman_pipe(error_reason);
+			return -1;
+		}
+		altmcast_portnum = DEFAULT_PORT + 2;
+	}
+
+	objdb->object_find_create(object_handle, "multicast", strlen("multicast"), &find_handle);
+	if (objdb->object_find_next(find_handle, &mcast_handle) == 0) {
+		if (!mcast_name)
+			objdb_get_string(objdb, mcast_handle, "addr", &mcast_name);
+		objdb_get_int(objdb, mcast_handle, "ttl", &ttl, ttl);
+		objdb_get_int(objdb, mcast_handle, "port", &mcast_portnum, DEFAULT_PORT);
+	}
+	objdb->object_find_destroy(find_handle);
+
+	if (!mcast_name) {
+		mcast_name = default_mcast(nodename, PRIMARY_IFACE);
+	}
+
+	if (!mcast_name) {
+		sprintf(error_reason, "Unable to set mcast_name");
+		write_cman_pipe(error_reason);
+		return -1;
+	}
+
+	objdb->object_find_create(object_handle, "altmulticast", strlen("altmulticast"), &find_handle);
+	if (objdb->object_find_next(find_handle, &mcast_handle) == 0) {
+		objdb_get_string(objdb, mcast_handle, "addr", &altmcast_name_tmp);
+		objdb_get_int(objdb, mcast_handle, "ttl", &altttl, ttl);
+		if (!broadcast) {
+			objdb_get_int(objdb, mcast_handle, "port", &altmcast_portnum, DEFAULT_PORT);
+		} else {
+			objdb_get_int(objdb, mcast_handle, "port", &altmcast_portnum, DEFAULT_PORT + 2);
+		}
+	}
+	objdb->object_find_destroy(find_handle);
+
+	/* See if the user wants our default set of openais services (default=yes) */
+	objdb_get_int(objdb, object_handle, "disable_openais", &disable_openais, 0);
+
+	objdb->object_key_create_typed(object_handle, "nodename",
+				       nodename, strlen(nodename)+1, OBJDB_VALUETYPE_STRING);
 
 	nodeid = atoi(nodeid_str);
 	error = 0;
 
 	/* optional port */
 	if (!portnum) {
-		objdb_get_int(objdb, object_handle, "port", &portnum, DEFAULT_PORT);
+		objdb_get_int(objdb, object_handle, "port", &portnum, mcast_portnum);
 	}
 
-	/* Check for broadcast */
-	if (!objdb_get_string(objdb, object_handle, "broadcast", &str)) {
-		if (strcmp(str, "yes") == 0) {
-			mcast_name = strdup("255.255.255.255");
-			if (!mcast_name)
-				return -1;
-			broadcast = 1;
-		}
-		free(str);
-	}
-
-	if (add_ifaddr(objdb, mcast_name, nodename, portnum, broadcast)) {
+	if (add_ifaddr(objdb, mcast_name, nodename, portnum, ttl,
+		       PRIMARY_IFACE, transport)) {
 		write_cman_pipe(error_reason);
 		return -1;
 	}
@@ -635,21 +806,44 @@ static int get_nodename(struct objdb_iface_ver0 *objdb)
 	num_nodenames = 1;
 	objdb->object_find_create(node_object_handle,"altname", strlen("altname"), &find_handle);
 	while (objdb->object_find_next(find_handle, &alt_object) == 0) {
-		unsigned int port;
 		char *node;
-		char *mcast;
 
 		if (objdb_get_string(objdb, alt_object, "name", &node)) {
 			continue;
 		}
 
-		objdb_get_int(objdb, alt_object, "port", &port, portnum);
+		objdb_get_int(objdb, alt_object, "port", &altportnum, altmcast_portnum);
 
-		if (objdb_get_string(objdb, alt_object, "mcast", &mcast)) {
-			mcast = mcast_name;
+		objdb_get_int(objdb, alt_object, "ttl", &altttl, altttl);
+
+		if (!altmcast_name) {
+			if (objdb_get_string(objdb, alt_object, "mcast", &altmcast_name)) {
+				if (altmcast_name_tmp) {
+					altmcast_name = altmcast_name_tmp;
+				} else {
+					altmcast_name = default_mcast(nodename, ALT_IFACE);
+				}
+			}
 		}
 
-		if (add_ifaddr(objdb, mcast, node, portnum, broadcast)) {
+		if (!altmcast_name) {
+			sprintf(error_reason, "Unable to determine alternate multicast name");
+			write_cman_pipe(error_reason);
+			return -1;
+		}
+
+		if (!strcmp(altmcast_name, mcast_name) &&
+		    ((altportnum == portnum) || (altportnum == portnum - 1) || (portnum == altportnum - 1))) {
+			sprintf(error_reason, "Alternate communication channel (mcast: %s ports: %d,%d) cannot use\n"
+					      "same address and ports of primary channel (mcast: %s ports: %d,%d)",
+					      altmcast_name, altportnum, altportnum - 1,
+					      mcast_name, portnum, portnum - 1);
+			write_cman_pipe(error_reason);
+			return -1;
+		}
+
+		if (add_ifaddr(objdb, altmcast_name, node, altportnum, altttl,
+			       ALT_IFACE, transport)) {
 			write_cman_pipe(error_reason);
 			return -1;
 		}
@@ -662,106 +856,13 @@ out:
 	return error;
 }
 
-/* These are basically cman overrides to the totem config bits */
-static void add_cman_overrides(struct objdb_iface_ver0 *objdb)
+static void add_logging_overrides(struct objdb_iface_ver0 *objdb)
 {
 	char *logstr;
 	char *logfacility;
 	char *loglevel;
 	hdb_handle_t object_handle;
 	hdb_handle_t find_handle;
-	char tmp[256];
-
-	/* "totem" key already exists, because we have added the interfaces by now */
-	objdb->object_find_create(OBJECT_PARENT_HANDLE,"totem", strlen("totem"), &find_handle);
-	if (objdb->object_find_next(find_handle, &object_handle) == 0)
-	{
-		char *value;
-
-		objdb->object_key_create_typed(object_handle, "version",
-					       "2", 2, OBJDB_VALUETYPE_STRING);
-
-		sprintf(tmp, "%d", nodeid);
-		objdb->object_key_create_typed(object_handle, "nodeid",
-					       tmp, strlen(tmp)+1, OBJDB_VALUETYPE_STRING);
-
-		objdb->object_key_create_typed(object_handle, "vsftype",
-					       "none", strlen("none")+1, OBJDB_VALUETYPE_STRING);
-
-		/* Set the token timeout is 10 seconds, but don't overrride anything that
-		   might be in cluster.conf */
-		if (objdb_get_string(objdb, object_handle, "token", &value)) {
-			snprintf(tmp, sizeof(tmp), "%d", DEFAULT_TOKEN_TIMEOUT);
-			objdb->object_key_create_typed(object_handle, "token",
-						       tmp, strlen(tmp)+1, OBJDB_VALUETYPE_STRING);
-		}
-
-		/* Extend consensus & join timeouts per bz#214290 */
-		if (objdb_get_string(objdb, object_handle, "join", &value)) {
-			objdb->object_key_create_typed(object_handle, "join",
-						       "60", strlen("60")+1, OBJDB_VALUETYPE_STRING);
-		}
-		/* Extend fail_to_recv_const, see bz#587078 */
-		if (objdb_get_string(objdb, object_handle, "fail_recv_const", &value)) {
-			objdb->object_key_create_typed(object_handle, "fail_recv_const",
-						       "2500", strlen("2500")+1, OBJDB_VALUETYPE_STRING);
-		}
-		/* consensus should be 2*token, see bz#544482*/
-		if (objdb_get_string(objdb, object_handle, "consensus", &value)) {
-		        unsigned int token;
-			char calc_consensus[32];
-
-			objdb_get_int(objdb, object_handle, "token", &token, DEFAULT_TOKEN_TIMEOUT);
-			sprintf(calc_consensus, "%d", token*2);
-			objdb->object_key_create_typed(object_handle, "consensus",
-						       calc_consensus, strlen(calc_consensus)+1, OBJDB_VALUETYPE_STRING);
-		}
-
-		/* Set RRP mode appropriately */
-		if (objdb_get_string(objdb, object_handle, "rrp_mode", &value)) {
-			if (num_interfaces > 1) {
-				objdb->object_key_create_typed(object_handle, "rrp_mode",
-							       "active", strlen("active")+1, OBJDB_VALUETYPE_STRING);
-			}
-			else {
-				objdb->object_key_create_typed(object_handle, "rrp_mode",
-							       "none", strlen("none")+1, OBJDB_VALUETYPE_STRING);
-			}
-		}
-
-		if (objdb_get_string(objdb, object_handle, "secauth", &value)) {
-			sprintf(tmp, "%d", 1);
-			objdb->object_key_create_typed(object_handle, "secauth",
-						       tmp, strlen(tmp)+1, OBJDB_VALUETYPE_STRING);
-		}
-
-		/* optional security key filename */
-		if (!key_filename) {
-			objdb_get_string(objdb, object_handle, "keyfile", &key_filename);
-		}
-		else {
-			objdb->object_key_create_typed(object_handle, "keyfile",
-						       key_filename, strlen(key_filename)+1, OBJDB_VALUETYPE_STRING);
-		}
-		if (!key_filename) {
-			/* Use the cluster name as key,
-			 * This isn't a good isolation strategy but it does make sure that
-			 * clusters on the same port/multicast by mistake don't actually interfere
-			 * and that we have some form of encryption going.
-			 */
-
-			int keylen;
-			memset(tmp, 0, sizeof(tmp));
-
-			strcpy(tmp, cluster_name);
-
-			/* Key length must be a multiple of 4 */
-			keylen = (strlen(cluster_name)+4) & 0xFC;
-			objdb->object_key_create_typed(object_handle, "key",
-						       tmp, keylen, OBJDB_VALUETYPE_STRING);
-		}
-	}
-	objdb->object_find_destroy(find_handle);
 
 	/* Make sure mainconfig doesn't stomp on our logging options */
 	objdb->object_find_create(OBJECT_PARENT_HANDLE, "logging", strlen("logging"), &find_handle);
@@ -839,6 +940,161 @@ static void add_cman_overrides(struct objdb_iface_ver0 *objdb)
 		objdb->object_key_create_typed(object_handle, "to_stderr",
 					       "yes", strlen("yes")+1, OBJDB_VALUETYPE_STRING);
 	}
+
+
+}
+
+static int count_configured_nodes(struct objdb_iface_ver0 *objdb)
+{
+	hdb_handle_t find_handle = 0;
+	hdb_handle_t nodes_handle;
+	int count = 0;
+
+	nodes_handle = nodeslist_init(objdb, cluster_parent_handle, &find_handle);
+	while (nodes_handle) {
+		count++;
+		nodes_handle = nodeslist_next(objdb, find_handle);
+	}
+	objdb->object_find_destroy(find_handle);
+
+	return count;
+}
+
+/* These are basically cman overrides to the totem config bits */
+static void add_cman_overrides(struct objdb_iface_ver0 *objdb)
+{
+	hdb_handle_t object_handle;
+	hdb_handle_t find_handle;
+	int node_count = 0;
+	char tmp[256];
+
+	/* "totem" key already exists, because we have added the interfaces by now */
+	objdb->object_find_create(OBJECT_PARENT_HANDLE,"totem", strlen("totem"), &find_handle);
+	if (objdb->object_find_next(find_handle, &object_handle) == 0)
+	{
+		char *value;
+
+		objdb->object_key_create_typed(object_handle, "version",
+					       "2", 2, OBJDB_VALUETYPE_STRING);
+
+		sprintf(tmp, "%d", nodeid);
+		objdb->object_key_create_typed(object_handle, "nodeid",
+					       tmp, strlen(tmp)+1, OBJDB_VALUETYPE_STRING);
+
+		objdb->object_key_create_typed(object_handle, "vsftype",
+					       "none", strlen("none")+1, OBJDB_VALUETYPE_STRING);
+
+		/* Set the token timeout is 10 seconds, but don't overrride anything that
+		   might be in cluster.conf */
+		if (objdb_get_string(objdb, object_handle, "token", &value)) {
+			snprintf(tmp, sizeof(tmp), "%d", DEFAULT_TOKEN_TIMEOUT);
+			objdb->object_key_create_typed(object_handle, "token",
+						       tmp, strlen(tmp)+1, OBJDB_VALUETYPE_STRING);
+		}
+
+		/* Extend join timeouts per bz#214290 */
+		if (objdb_get_string(objdb, object_handle, "join", &value)) {
+			objdb->object_key_create_typed(object_handle, "join",
+						       "60", strlen("60")+1, OBJDB_VALUETYPE_STRING);
+		}
+		/* Extend fail_to_recv_const, see bz#587078 */
+		if (objdb_get_string(objdb, object_handle, "fail_recv_const", &value)) {
+			objdb->object_key_create_typed(object_handle, "fail_recv_const",
+						       "2500", strlen("2500")+1, OBJDB_VALUETYPE_STRING);
+		}
+
+		/*
+		 * consensus should be:
+		 * 2 nodes   - 200 ms <= consensus = token * 0.2 <= 2000
+		 * > 2 nodes - consensus = token + 2000
+		 *
+		 * autoconfig clusters will work as > 2 nodes
+		 *
+		 * See 611391#c19
+		 */
+
+		node_count=count_configured_nodes(objdb);
+
+		/* if we are running in autoconfig or we can't count the nodes, then play safe */
+		if ((getenv("CMAN_NOCONFIG")) || (node_count == 0))
+			node_count=3;
+
+		if (objdb_get_string(objdb, object_handle, "consensus", &value)) {
+			unsigned int token=0;
+			unsigned int consensus;
+			char calc_consensus[32];
+
+			objdb_get_int(objdb, object_handle, "token", &token, DEFAULT_TOKEN_TIMEOUT);
+
+			if (node_count > 2) {
+				consensus = (float)token+2000;
+			} else {
+				consensus = (float)token*0.2;
+				if (consensus < 200)
+					consensus = 200;
+				if (consensus > 2000)
+					consensus = 2000;
+			}
+
+			snprintf(calc_consensus, sizeof(calc_consensus), "%d", consensus);
+			objdb->object_key_create_typed(object_handle, "consensus",
+						       calc_consensus, strlen(calc_consensus)+1, OBJDB_VALUETYPE_STRING);
+		}
+
+		/* Set RRP mode appropriately */
+		if (objdb_get_string(objdb, object_handle, "rrp_mode", &value)) {
+			if (num_interfaces > 1) {
+				objdb->object_key_create_typed(object_handle, "rrp_mode",
+							       "passive", strlen("passive")+1, OBJDB_VALUETYPE_STRING);
+			}
+			else {
+				objdb->object_key_create_typed(object_handle, "rrp_mode",
+							       "none", strlen("none")+1, OBJDB_VALUETYPE_STRING);
+			}
+		}
+
+		if (objdb_get_string(objdb, object_handle, "rrp_problem_count_threshold", &value)) {
+			if (num_interfaces > 1) {
+				objdb->object_key_create_typed(object_handle, "rrp_problem_count_threshold",
+							       "3", 2, OBJDB_VALUETYPE_STRING);
+			}
+		}
+
+		if (objdb_get_string(objdb, object_handle, "secauth", &value)) {
+			sprintf(tmp, "%d", 1);
+			objdb->object_key_create_typed(object_handle, "secauth",
+						       tmp, strlen(tmp)+1, OBJDB_VALUETYPE_STRING);
+		}
+
+		/* optional security key filename */
+		if (!key_filename) {
+			objdb_get_string(objdb, object_handle, "keyfile", &key_filename);
+		}
+		else {
+			objdb->object_key_create_typed(object_handle, "keyfile",
+						       key_filename, strlen(key_filename)+1, OBJDB_VALUETYPE_STRING);
+		}
+		if (!key_filename) {
+			/* Use the cluster name as key,
+			 * This isn't a good isolation strategy but it does make sure that
+			 * clusters on the same port/multicast by mistake don't actually interfere
+			 * and that we have some form of encryption going.
+			 */
+
+			int keylen;
+			memset(tmp, 0, sizeof(tmp));
+
+			strcpy(tmp, cluster_name);
+
+			/* Key length must be a multiple of 4 */
+			keylen = (strlen(cluster_name)+4) & 0xFC;
+			objdb->object_key_create_typed(object_handle, "key",
+						       tmp, keylen, OBJDB_VALUETYPE_STRING);
+		}
+	}
+	objdb->object_find_destroy(find_handle);
+
+	add_logging_overrides(objdb);
 
 	/* Make sure we allow connections from user/group "ais" */
 	objdb->object_find_create(OBJECT_PARENT_HANDLE, "aisexec", strlen("aisexec"), &find_handle);
@@ -948,7 +1204,7 @@ static int set_noccs_defaults(struct objdb_iface_ver0 *objdb)
 	num_nodenames = 1;
 
 	if (!mcast_name) {
-		mcast_name = default_mcast(nodename, cluster_id);
+		mcast_name = default_mcast(nodename, PRIMARY_IFACE);
 	}
 
 	/* This will increase as nodes join the cluster */
@@ -1066,7 +1322,7 @@ static int copy_config_tree(struct objdb_iface_ver0 *objdb, hdb_handle_t source_
 	while ( (res = objdb->object_find_next(find_handle, &object_handle) == 0)) {
 
 		/* Down we go ... */
-		copy_config_tree(objdb, object_handle, new_object, 0);
+		copy_config_tree(objdb, object_handle, new_object, always_create);
 	}
 	objdb->object_find_destroy(find_handle);
 
@@ -1099,13 +1355,21 @@ static int get_cman_globals(struct objdb_iface_ver0 *objdb)
 	char *use_hash;
 
 	objdb_get_string(objdb, cluster_parent_handle, "name", &cluster_name);
+	if (!cluster_name) {
+		sprintf(error_reason, "Unable to determine cluster name.\n");
+		write_cman_pipe("Unable to determine cluster name.\n");
+		return -1;
+	}
+
+	if (strlen(cluster_name) > 15) {
+		sprintf(error_reason, "%s\n", "Invalid cluster name. It must be 15 characters or fewer\n");
+		write_cman_pipe("Invalid cluster name. It must be 15 characters or fewer\n");
+		return -1;
+	}
 
 	/* Get the <cman> bits that override <totem> bits */
 	objdb->object_find_create(cluster_parent_handle, "cman", strlen("cman"), &find_handle);
 	if (objdb->object_find_next(find_handle, &object_handle) == 0) {
-		if (!portnum)
-			objdb_get_int(objdb, object_handle, "port", &portnum, DEFAULT_PORT);
-
 		if (!key_filename)
 			objdb_get_string(objdb, object_handle, "keyfile", &key_filename);
 
@@ -1137,6 +1401,8 @@ static int cmanpre_reloadconfig(struct objdb_iface_ver0 *objdb, int flush, const
 	hdb_handle_t object_handle;
 	hdb_handle_t find_handle;
 	hdb_handle_t cluster_parent_handle_new;
+	unsigned int config_version = 0, config_version_new = 0;
+	char *config_value = NULL;
 
 	/* don't reload if we've been told to run configless */
 	if (getenv("CMAN_NOCONFIG")) {
@@ -1159,6 +1425,34 @@ static int cmanpre_reloadconfig(struct objdb_iface_ver0 *objdb, int flush, const
 	}
 	objdb->object_find_destroy(find_handle);
 
+	if (!objdb->object_key_get(cluster_parent_handle, "config_version", strlen("config_version"), (void *)&config_value, NULL)) {
+		if (config_value) {
+			config_version = atoi(config_value);
+		} else {
+			/* it should never ever happen.. */
+			sprintf (error_reason, "%s", "Cannot find old /cluster/config_version key in configuration\n");
+			goto err;
+		}
+	}
+
+	config_value = NULL;
+
+	if (!objdb->object_key_get(cluster_parent_handle_new, "config_version", strlen("config_version"), (void *)&config_value, NULL)) {
+		if (config_value) {
+			config_version_new = atoi(config_value);
+		} else {
+			objdb->object_destroy(cluster_parent_handle_new);
+			sprintf (error_reason, "%s", "Cannot find new /cluster/config_version key in configuration\n");
+			goto err;
+		}
+	}
+
+	if (config_version_new <= config_version) {
+		objdb->object_destroy(cluster_parent_handle_new);
+		sprintf (error_reason, "%s", "New configuration version has to be newer than current running configuration\n");
+		goto err;
+	}
+
 	/* destroy the old one */
 	objdb->object_destroy(cluster_parent_handle);
 
@@ -1169,18 +1463,20 @@ static int cmanpre_reloadconfig(struct objdb_iface_ver0 *objdb, int flush, const
 	objdb->object_find_create(OBJECT_PARENT_HANDLE, "logging", strlen("logging"), &find_handle);
 	ret = objdb->object_find_next(find_handle, &object_handle);
 	objdb->object_find_destroy(find_handle);
-	if (ret) {
+	if (!ret) {
 		objdb->object_destroy(object_handle);
 	}
 
 	/* copy /cluster/logging to /logging */
-	ret = copy_tree_to_root(objdb, "logging", 0);
+	ret = copy_tree_to_root(objdb, "logging", 1);
 
 	/* Note: we do NOT delete /totem as corosync stores other things in there that
 	   it needs! */
 
 	/* copy /cluster/totem to /totem */
 	ret = copy_tree_to_root(objdb, "totem", 0);
+
+	add_logging_overrides(objdb);
 
 	return 0;
 
@@ -1296,11 +1592,12 @@ static int cmanpre_readconfig(struct objdb_iface_ver0 *objdb, const char **error
 	else {
 		/* Move these to a place where corosync expects to find them */
 		ret = copy_tree_to_root(objdb, "totem", 0);
-		ret = copy_tree_to_root(objdb, "logging", 0);
+		ret = copy_tree_to_root(objdb, "logging", 1);
 		ret = copy_tree_to_root(objdb, "event", 0);
 		ret = copy_tree_to_root(objdb, "amf", 0);
 		ret = copy_tree_to_root(objdb, "aisexec", 0);
 		ret = copy_tree_to_root(objdb, "service", 1);
+		ret = copy_tree_to_root(objdb, "uidgid", 1);
 	}
 
 	objdb->object_find_create(cluster_parent_handle, "cman", strlen("cman"), &find_handle);

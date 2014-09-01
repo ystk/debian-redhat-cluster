@@ -24,6 +24,7 @@
 #include <platform.h>
 #include <unistd.h>
 #include <time.h>
+#include <linux/types.h>
 #include <linux/fs.h>
 #include <liblogthread.h>
 #include <zlib.h>
@@ -431,10 +432,10 @@ diskRawRead(target_info_t *disk, char *buf, int len)
 	io_state(STATE_NONE);
 	if (readret > 0) {
 		if (readret > len) {
-			memcpy(alignedBuf, buf, len);
+			memcpy(buf, alignedBuf, len);
 			readret = len;
 		} else {
-			memcpy(alignedBuf, buf, readret);
+			memcpy(buf, alignedBuf, readret);
 		}
 	}
 
@@ -504,13 +505,14 @@ diskRawWrite(target_info_t *disk, char *buf, int len)
 	}
 
 	if (len > disk->d_blksz) {
+		free(alignedBuf);
 		logt_print(LOG_ERR,
 		       "diskRawWrite: not setup for larger than %d.\n",
 		       (int)disk->d_blksz);
 		return (-1);
 	}
 
-	memcpy(buf, alignedBuf, len);
+	memcpy(alignedBuf, buf, len);
 	io_state(STATE_WRITE);
 	ret = write(disk->d_fd, alignedBuf, writelen);
 	io_state(STATE_NONE);

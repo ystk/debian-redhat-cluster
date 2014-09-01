@@ -1,4 +1,15 @@
-redhat-cluster (3.0.12-3.2+deb7u2) testing-proposed-updates; urgency=low
+redhat-cluster (3.1.8-1.2) unstable; urgency=medium
+
+  [ gregor herrmann ]
+  * Non-maintainer upload.
+  * Fix "hardcodes /usr/lib/perl5":
+    make debian/libccs-perl.install executable and use $Config{vendorarch} to
+    get dynamic path
+    (Closes: #752811)
+
+ -- Damyan Ivanov <dmn@debian.org>  Mon, 04 Aug 2014 12:34:59 +0000
+
+redhat-cluster (3.1.8-1.1) unstable; urgency=low
 
   * Non-maintainer upload.
   * Drop clvm Depends for redhat-cluster-suite binary package.
@@ -6,26 +17,26 @@ redhat-cluster (3.0.12-3.2+deb7u2) testing-proposed-updates; urgency=low
     the clvm binary package. Drop the Depends also in redhat-cluster-suite.
     (Closes: #697870)
 
- -- Salvatore Bonaccorso <carnil@debian.org>  Thu, 10 Jan 2013 22:21:01 +0100
+ -- Salvatore Bonaccorso <carnil@debian.org>  Thu, 10 Jan 2013 21:40:28 +0100
 
-redhat-cluster (3.0.12-3.2+deb7u1) testing-proposed-updates; urgency=low
+redhat-cluster (3.1.8-1) unstable; urgency=low
 
-  * Non-maintainer upload.
-  * Upload to testing for wheezy.
-  * Don't install files already in resource-agents. (Closes: #649068)
+  [ Andres Rodriguez ]
+  * New upstream release
+  * Apply all the changes from Ubuntu.
+  * Bump Standards Version.
+  * debian/source/format: 3.0 (quilt).
+  * Switch to dh 7.
+    - debian/control: Bump debhelper build-dep.
+    - debian/rules: Switch.
 
- -- Ivo De Decker <ivo.dedecker@ugent.be>  Fri, 28 Dec 2012 15:09:48 +0100
-
-redhat-cluster (3.0.12-3.2) unstable; urgency=low
-
-  * Non-maintainer upload.
-  * Add 0006-Fix-FTBFS-due-to-moved-header-files.patch patch.
-    Fix FTBFS due to moved header files. (Closes: #669446)
-  * Add 0007-Add-remote_fs-to-Required-Start-and-Required-Stop.patch patch.
-    Add $remote_fs to Required-Start and Required-Stop to fix lintian error
-    E: init.d-script-missing-dependency-on-remote_fs.
-
- -- Salvatore Bonaccorso <carnil@debian.org>  Sat, 07 Jul 2012 05:07:20 +0200
+  [ Martin Loschwitz ]
+  * Thanks a lot to Andres Rodrigues for all the great work he did on this!
+  * Removed debian/control.modules.in and debian/upgrade.txt due to 
+    being unnecessary now or hopelessly outdated
+  * Add myself to Uploaders: in debian/control
+  * Switch to dh 9.
+ -- Martin Loschwitz <madkiss@debian.org>  Sun, 05 Aug 2012 08:13:00 +0000
 
 redhat-cluster (3.0.12-3.1) unstable; urgency=low
 

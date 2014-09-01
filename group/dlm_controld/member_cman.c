@@ -9,6 +9,7 @@ static cman_node_t      old_nodes[MAX_NODES];
 static int              old_node_count;
 static cman_node_t      cman_nodes[MAX_NODES];
 static int              cman_node_count;
+static uint32_t         cluster_ringid_seq;
 
 void kick_node_from_cluster(int nodeid)
 {
@@ -20,6 +21,17 @@ void kick_node_from_cluster(int nodeid)
 			  nodeid);
 		cman_kill_node(ch_admin, nodeid);
 	}
+}
+
+static cman_node_t *get_node(cman_node_t *node_list, int count, int nodeid)
+{
+	int i;
+
+	for (i = 0; i < count; i++) {
+		if (node_list[i].cn_nodeid == nodeid)
+			return &node_list[i];
+	}
+	return NULL;
 }
 
 static int is_member(cman_node_t *node_list, int count, int nodeid)
@@ -69,10 +81,20 @@ char *nodeid2name(int nodeid)
 
 static void statechange(void)
 {
+	cman_cluster_t info;
+	cman_node_t *old;
 	int i, j, rv;
 	struct cman_node_address addrs[MAX_NODE_ADDRESSES];
 	int num_addrs;
 	struct cman_node_address *addrptr = addrs;
+
+	rv = cman_get_cluster(ch, &info);
+	if (rv < 0) {
+		log_error("cman_get_cluster error %d %d", rv, errno);
+		/* keep going, this is just informational */
+		memset(&info, 0, sizeof(info));
+	}
+	cluster_ringid_seq = info.ci_generation;
 
 	cluster_quorate = cman_is_quorate(ch);
 
@@ -99,8 +121,8 @@ static void statechange(void)
 		if (old_nodes[i].cn_member &&
 		    !is_cluster_member(old_nodes[i].cn_nodeid)) {
 
-			log_debug("cluster node %d removed",
-				  old_nodes[i].cn_nodeid);
+			log_debug("cluster node %d removed seq %u",
+				  old_nodes[i].cn_nodeid, cluster_ringid_seq);
 
 			node_history_cluster_remove(old_nodes[i].cn_nodeid);
 
@@ -112,6 +134,9 @@ static void statechange(void)
 		if (cman_nodes[i].cn_member &&
 		    !is_old_member(cman_nodes[i].cn_nodeid)) {
 
+			log_debug("cluster node %d added seq %u",
+				  cman_nodes[i].cn_nodeid, cluster_ringid_seq);
+
 			rv = cman_get_node_addrs(ch, cman_nodes[i].cn_nodeid,
 						 MAX_NODE_ADDRESSES,
 						 &num_addrs, addrs);
@@ -121,8 +146,54 @@ static void statechange(void)
 				addrptr = &cman_nodes[i].cn_address;
 			}
 
-			log_debug("cluster node %d added",
-				  cman_nodes[i].cn_nodeid);
+			node_history_cluster_add(cman_nodes[i].cn_nodeid);
+
+			for (j = 0; j < num_addrs; j++) {
+				add_configfs_node(cman_nodes[i].cn_nodeid,
+						  addrptr[j].cna_address,
+						  addrptr[j].cna_addrlen,
+						  (cman_nodes[i].cn_nodeid ==
+						   our_nodeid));
+			}
+		} else {
+			/* look for any nodes that were members of both
+			 * old and new but have a new incarnation number
+			 * from old to new, indicating they left and rejoined
+			 * in between */
+
+			old = get_node(old_nodes, old_node_count, cman_nodes[i].cn_nodeid);
+
+			if (!old)
+				continue;
+			if (cman_nodes[i].cn_incarnation == old->cn_incarnation)
+				continue;
+
+			log_debug("cluster node %d removed and added seq %u "
+				  "old %u new %u",
+				  cman_nodes[i].cn_nodeid, cluster_ringid_seq,
+				  old->cn_incarnation,
+				  cman_nodes[i].cn_incarnation);
+
+			/*
+			 * remove (copied from above)
+			 */
+
+			node_history_cluster_remove(old_nodes[i].cn_nodeid);
+
+			del_configfs_node(old_nodes[i].cn_nodeid);
+
+			/*
+			 * add (copied from above)
+			 */
+
+			rv = cman_get_node_addrs(ch, cman_nodes[i].cn_nodeid,
+						 MAX_NODE_ADDRESSES,
+						 &num_addrs, addrs);
+			if (rv < 0) {
+				log_debug("cman_get_node_addrs failed, falling back to single-homed. ");
+				num_addrs = 1;
+				addrptr = &cman_nodes[i].cn_address;
+			}
 
 			node_history_cluster_add(cman_nodes[i].cn_nodeid);
 

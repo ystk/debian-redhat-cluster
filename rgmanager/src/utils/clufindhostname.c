@@ -24,7 +24,7 @@ main(int argc, char **argv)
 	void *ptr;
 	struct in_addr  addr4;
 	struct in6_addr addr6;
-	int opt, size, family;
+	int opt, size, family, ret;
 	char *sep;
 
 	if (argc != 3) {
@@ -47,8 +47,10 @@ main(int argc, char **argv)
 				size = sizeof(addr6);
 			}
 
-			if (inet_pton(family, optarg, ptr) < 0) {
-				perror("inet_pton");
+			ret = inet_pton(family, optarg, ptr);
+			if (ret <= 0) {
+				if (ret < 0)
+					perror("inet_pton");
 				exit(2);
 			}
 

@@ -142,7 +142,5 @@ fail:
 	if (doc)
 		xmlFreeDoc(doc);
 
-	xmlCleanupParser();
-
 	return err;
 }

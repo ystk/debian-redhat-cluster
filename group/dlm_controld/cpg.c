@@ -45,6 +45,7 @@ struct node {
 	int check_fs;
 	int fs_notified;
 	uint64_t add_time;
+	uint64_t fail_time;
 	uint64_t fence_time;	/* for debug */
 	uint64_t cluster_add_time;
 	uint64_t cluster_remove_time;
@@ -356,12 +357,13 @@ static void free_ls(struct lockspace *ls)
    has failed yet).
 
    So, check that:
-   1. has fenced fenced the node after it joined this lockspace?
+   1. has fenced fenced the node since we saw it fail?
    2. fenced has no outstanding fencing ops
 
    For 1:
-   - record the time of the first good start message we see from node X
    - node X fails
+   - we see node X fail and X has non-zero add_time,
+     set check_fencing and record the fail time
    - wait for X to be removed from all dlm cpg's  (probably not necessary)
    - check that the fencing time is later than the recorded time above
 
@@ -499,6 +501,7 @@ static void node_history_fail(struct lockspace *ls, int nodeid,
 		node->check_fencing = 1;
 		node->fence_time = 0;
 		node->fence_queries = 0;
+		node->fail_time = time(NULL);
 	}
 
 	/* fenced will take care of making sure the quorum value
@@ -539,10 +542,16 @@ static int check_fencing_done(struct lockspace *ls)
 		if (rv < 0)
 			log_error("fenced_node_info error %d", rv);
 
-		if (last_fenced_time > node->add_time) {
-			log_group(ls, "check_fencing %d %llu fenced at %llu",
+		/* need >= not just > because in at least one case
+		   we've seen fenced_time within the same second as
+		   fail_time: with external fencing, e.g. fence_node */
+
+		if (last_fenced_time >= node->fail_time) {
+			log_group(ls, "check_fencing %d done "
+				  "add %llu fail %llu last %llu",
 				  node->nodeid,
 				  (unsigned long long)node->add_time,
+				  (unsigned long long)node->fail_time,
 				  (unsigned long long)last_fenced_time);
 			node->check_fencing = 0;
 			node->add_time = 0;
@@ -550,9 +559,11 @@ static int check_fencing_done(struct lockspace *ls)
 		} else {
 			if (!node->fence_queries ||
 			    node->fence_time != last_fenced_time) {
-				log_group(ls, "check_fencing %d not fenced "
-					  "add %llu fence %llu", node->nodeid,
+				log_group(ls, "check_fencing %d wait "
+					  "add %llu fail %llu last %llu",
+					  node->nodeid,
 					 (unsigned long long)node->add_time,
+					 (unsigned long long)node->fail_time,
 					 (unsigned long long)last_fenced_time);
 				node->fence_queries++;
 				node->fence_time = last_fenced_time;
@@ -640,6 +651,7 @@ static int check_fs_done(struct lockspace *ls)
 		if (node->fs_notified) {
 			log_group(ls, "check_fs nodeid %d clear", node->nodeid);
 			node->check_fs = 0;
+			node->fs_notified = 0;
 		} else {
 			log_group(ls, "check_fs nodeid %d needs fs notify",
 				  node->nodeid);
@@ -1088,6 +1100,12 @@ static void receive_plocks_stored(struct lockspace *ls, struct dlm_header *hd,
 		  "need_plocks %d", hd->nodeid, hd->msgdata, hd->flags,
 		  hd->msgdata2, ls->need_plocks);
 
+	log_plock(ls, "receive_plocks_stored %d:%u flags %x sig %x "
+		  "need_plocks %d", hd->nodeid, hd->msgdata, hd->flags,
+		  hd->msgdata2, ls->need_plocks);
+
+	ls->last_plock_sig = hd->msgdata2;
+
 	if (!ls->need_plocks)
 		return;
 
@@ -1256,6 +1274,8 @@ static void prepare_plocks(struct lockspace *ls)
 	struct member *memb;
 	uint32_t sig;
 
+	log_plock(ls, "prepare_plocks");
+
 	if (!cfgd_enable_plock || ls->disable_plock)
 		return;
 
@@ -1313,8 +1333,12 @@ static void prepare_plocks(struct lockspace *ls)
 	   the previous stored message.  They will read the ckpt from the
 	   previous ckpt_node upon receiving the stored message from us. */
 
-	if (nodes_added(ls))
+	if (nodes_added(ls)) {
 		store_plocks(ls, &sig);
+		ls->last_plock_sig = sig;
+	} else {
+		sig = ls->last_plock_sig;
+	}
 	send_plocks_stored(ls, sig);
 }
 
@@ -1552,6 +1576,12 @@ static void dlm_header_in(struct dlm_header *hd)
 	hd->msgdata2    = le32_to_cpu(hd->msgdata2);
 }
 
+/* after our join confchg, we want to ignore plock messages (see need_plocks
+   checks below) until the point in time where the ckpt_node saves plock
+   state (final start message received); at this time we want to shift from
+   ignoring plock messages to saving plock messages to apply on top of the
+   plock state that we read. */
+
 static void deliver_cb(cpg_handle_t handle,
 		       const struct cpg_name *group_name,
 		       uint32_t nodeid, uint32_t pid,
@@ -1559,6 +1589,7 @@ static void deliver_cb(cpg_handle_t handle,
 {
 	struct lockspace *ls;
 	struct dlm_header *hd;
+	int ignore_plock;
 
 	ls = find_ls_handle(handle);
 	if (!ls) {
@@ -1589,6 +1620,8 @@ static void deliver_cb(cpg_handle_t handle,
 		return;
 	}
 
+	ignore_plock = 0;
+
 	switch (hd->type) {
 	case DLM_MSG_START:
 		receive_start(ls, hd, len);
@@ -1597,6 +1630,10 @@ static void deliver_cb(cpg_handle_t handle,
 	case DLM_MSG_PLOCK:
 		if (ls->disable_plock)
 			break;
+		if (ls->need_plocks && !ls->save_plocks) {
+			ignore_plock = 1;
+			break;
+		}
 		if (cfgd_enable_plock)
 			receive_plock(ls, hd, len);
 		else
@@ -1607,6 +1644,10 @@ static void deliver_cb(cpg_handle_t handle,
 	case DLM_MSG_PLOCK_OWN:
 		if (ls->disable_plock)
 			break;
+		if (ls->need_plocks && !ls->save_plocks) {
+			ignore_plock = 1;
+			break;
+		}
 		if (cfgd_enable_plock && cfgd_plock_ownership)
 			receive_own(ls, hd, len);
 		else
@@ -1618,6 +1659,10 @@ static void deliver_cb(cpg_handle_t handle,
 	case DLM_MSG_PLOCK_DROP:
 		if (ls->disable_plock)
 			break;
+		if (ls->need_plocks && !ls->save_plocks) {
+			ignore_plock = 1;
+			break;
+		}
 		if (cfgd_enable_plock && cfgd_plock_ownership)
 			receive_drop(ls, hd, len);
 		else
@@ -1630,6 +1675,10 @@ static void deliver_cb(cpg_handle_t handle,
 	case DLM_MSG_PLOCK_SYNC_WAITER:
 		if (ls->disable_plock)
 			break;
+		if (ls->need_plocks && !ls->save_plocks) {
+			ignore_plock = 1;
+			break;
+		}
 		if (cfgd_enable_plock && cfgd_plock_ownership)
 			receive_sync(ls, hd, len);
 		else
@@ -1683,6 +1732,10 @@ static void deliver_cb(cpg_handle_t handle,
 	default:
 		log_error("unknown msg type %d", hd->type);
 	}
+
+	if (ignore_plock)
+		log_plock(ls, "msg %s nodeid %d need_plock ignore",
+			  msg_name(hd->type), nodeid);
 
 	apply_changes(ls);
 }

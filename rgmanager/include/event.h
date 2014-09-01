@@ -119,11 +119,14 @@ int slang_process_event(event_table_t *event_table, event_t *ev);
 
 /* For distributed events. */
 void set_transition_throttling(int nsecs);
+int get_transition_throttling(void);
+void broadcast_event(const char *svcName, uint32_t state, int owner, int last);
 
 /* Simplified service start. */
 int service_op_start(char *svcName, int *target_list, int target_list_len,
 		     int *new_owner);
 int service_op_stop(char *svcName, int do_disable, int event_type);
+int service_op_convalesce(const char *svcName);
 int service_op_migrate(char *svcName, int target_node);
 
 

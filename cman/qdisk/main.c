@@ -690,6 +690,17 @@ register_device(qd_ctx *ctx)
 				ctx->qc_votes : 0);
 }
 
+static int
+update_device(qd_ctx *ctx)
+{
+	return cman_update_quorum_device(
+			ctx->qc_cman_admin,
+			(ctx->qc_flags&RF_CMAN_LABEL) ?
+				ctx->qc_cman_label : ctx->qc_device,
+			(!(ctx->qc_flags & RF_MASTER_WINS) ||
+			 ctx->qc_status == S_MASTER) ?
+				ctx->qc_votes : 0);
+}
 
 static int 
 adjust_votes(qd_ctx *ctx)
@@ -904,7 +915,8 @@ cman_wait(cman_handle_t ch, struct timeval *_tv)
 static void
 process_cman_event(cman_handle_t handle, void *private, int reason, int arg)
 {
-	qd_ctx *ctx = (qd_ctx *)private;
+	qd_priv_t *qp = (qd_priv_t *)private;
+	qd_ctx *ctx = qp->ctx;
 
 	switch(reason) {
 	case CMAN_REASON_PORTOPENED:
@@ -1377,31 +1389,33 @@ auto_qdisk_votes(int desc)
 {
 	int ret = 1;
 	char buf[PATH_MAX];
-	char *name;
+	char *v = NULL, *name = NULL;
 
 	while (1) {
 		int votes=0;
 
-		snprintf(buf, sizeof(buf)-1,
-			"/cluster/clusternodes/clusternode[%d]/@votes", ret);
-
 		name = NULL;
+		snprintf(buf, sizeof(buf)-1,
+			"/cluster/clusternodes/clusternode[%d]/@name", ret);
 		if (ccs_get(desc, buf, &name) != 0)
 			break;
 
-		votes=atoi(name);
+		snprintf(buf, sizeof(buf)-1,
+			"/cluster/clusternodes/clusternode[%d]/@votes", ret);
+
+		if (ccs_get(desc, buf, &v) == 0) {
+			votes = atoi(v);
+			free(v);
+			v = NULL;
+		} else {
+			votes = 1;
+		}
+
 		if (votes != 1) {
+
+			logt_print(LOG_ERR, "%s's vote count is %d\n",
+				   name, votes);
 			free(name);
-
-			snprintf(buf, sizeof(buf)-1,
-			    "/cluster/clusternodes/clusternode[%d]/@name",
-			    ret);
-
-			if (ccs_get(desc, buf, &name) == 0) {
-				logt_print(LOG_ERR, "%s's vote count is %d\n",
-					   name, votes);
-				free(name);
-			}
 
 			logt_print(LOG_ERR, "Set all node vote counts to 1 "
 				   "or specify qdiskd's votes\n");
@@ -1430,12 +1444,35 @@ get_dynamic_config_data(qd_ctx *ctx, int ccsfd)
 {
 	char *val = NULL;
 	char query[256];
-	int old_votes = 0;
+	int old_votes = 0, found = 0;
 
 	if (ccsfd < 0)
 		return -1;
 
 	logt_print(LOG_DEBUG, "Loading dynamic configuration\n");
+
+	/* Check label / device presence.  If it disappeared, we need to exit */
+	if (ctx->qc_config) {
+		val = NULL;
+		snprintf(query, sizeof(query), "/cluster/quorumd/@device");
+		found = ccs_get(ccsfd, query, &val);
+		if (found != 0) {
+			val = NULL;
+			snprintf(query, sizeof(query), "/cluster/quorumd/@label");
+			found = ccs_get(ccsfd, query, &val);
+			free(val);
+		}
+
+		if (found != 0) {
+			logt_print(LOG_NOTICE,
+				   "Quorum device removed from the configuration."
+				   "  Shutting down.\n");
+			ctx->qc_votes = 0;
+			register_device(ctx);
+			_running = 0;
+			return -1;
+		}
+	}
 
 	/* Get status file */
 	snprintf(query, sizeof(query), "/cluster/quorumd/@status_file");
@@ -1722,6 +1759,17 @@ get_static_config_data(qd_ctx *ctx, int ccsfd)
 	snprintf(query, sizeof(query), "/cluster/quorumd/@label");
 	if (ccs_get(ccsfd, query, &val) == 0) {
 		ctx->qc_label = val;
+		/* courtesy info message */
+		if (ctx->qc_device)
+			logt_print(LOG_INFO, "Quorum Label (%s) will be used to "
+				   "locate quorum partition, overriding Quorum Device\n",
+				   ctx->qc_label);
+	}
+
+	if (!ctx->qc_device && !ctx->qc_label) {
+		logt_print(LOG_ERR, "No device or label specified; cannot "
+			   "run QDisk services.\n");
+		return -1;
 	}
 
 	/* Get min score */
@@ -1764,7 +1812,6 @@ get_static_config_data(qd_ctx *ctx, int ccsfd)
 			ctx->qc_flags |= RF_UPTIME;
 		free(val);
 	}
-
 
 	return 0;
 }
@@ -1815,7 +1862,11 @@ get_config_data(qd_ctx *ctx, struct h_data *h, int maxh, int *cfh)
 		goto out;
 	}
 
-	*cfh = configure_heuristics(ccsfd, h, maxh);
+	/* Heuristics need to report in 1 cycle before we need to 
+	 * report in so we can get their score.
+	 */
+	*cfh = configure_heuristics(ccsfd, h, maxh,
+				    ctx->qc_interval * (ctx->qc_tko - 1));
 
 	if (*cfh) {
 		if (ctx->qc_flags & RF_MASTER_WINS) {
@@ -1876,6 +1927,33 @@ check_stop_cman(qd_ctx *ctx)
 do { static int _logged=0; if (!_logged) { _logged=1; logt_print(level, fmt, ##args); } } while(0)
 
 
+static void
+qdisk_whine(cman_handle_t h, void *privdata, char *buf, int len,
+	    uint8_t port, int nodeid)
+{
+	int32_t dstate;
+	qd_priv_t *qp = (qd_priv_t *)privdata;
+	node_info_t *ni = qp->ni;
+
+	if (len != sizeof(dstate)) {
+		return;
+	}
+
+	dstate = *((int32_t*)buf);
+
+	if (nodeid == (qp->ctx->qc_my_id))
+		return;
+
+	swab32(dstate);
+
+	if (dstate) {
+		logt_print(LOG_NOTICE, "qdiskd on node %d reports hung %s()\n", nodeid,
+			   state_to_string(dstate));
+		ni[nodeid-1].ni_misses = 0;
+	}
+}
+
+
 int
 main(int argc, char **argv)
 {
@@ -1889,6 +1967,7 @@ main(int argc, char **argv)
 	char device[128];
 	pid_t pid;
 	quorum_header_t qh;
+	qd_priv_t qp;
 
 	if (check_process_running(argv[0], &pid) && pid !=getpid()) {
 		printf("QDisk services already running\n");
@@ -1951,8 +2030,18 @@ main(int argc, char **argv)
 
 	/* For cman notifications we need two sockets - one for events,
 	   one for config change callbacks */
-	ch_user = cman_init(&ctx);
+	qp.ctx = &ctx;
+	qp.ni = &ni[0];
+	qp.ni_len = MAX_NODES_DISK;
+
+	ch_user = cman_init(&qp);
         if (cman_start_notification(ch_user, process_cman_event) != 0) {
+		logt_print(LOG_CRIT, "Could not register with CMAN: %s\n",
+			   strerror(errno));
+		goto out;
+	}
+
+	if (cman_start_recv_data(ch_user, qdisk_whine, 178) != 0) {
 		logt_print(LOG_CRIT, "Could not register with CMAN: %s\n",
 			   strerror(errno));
 		goto out;
@@ -2041,14 +2130,28 @@ main(int argc, char **argv)
 
 	if (!_running)
 		goto out;
-	
-	/* This registers the quorum device */
-	register_device(&ctx);
 
-	io_nanny_start(ctx.qc_tko * ctx.qc_interval);
+	/* This registers the quorum device */
+	ret = register_device(&ctx);
+	if (ret) {
+		if (errno == EBUSY) {
+			logt_print(LOG_NOTICE, "quorum device is already registered, updating\n");
+			ret = update_device(&ctx);
+			if (ret) {
+				logt_print(LOG_ERR, "Unable to update quorum device info!\n");
+				goto out;
+			}
+		} else {
+			logt_print(LOG_ERR, "Unable to register quorum device!\n");
+			goto out;
+		}
+	}
+
+	io_nanny_start(ch_user, ctx.qc_tko * ctx.qc_interval);
 
 	if (quorum_loop(&ctx, ni, MAX_NODES_DISK) == 0) {
 		/* Only clean up if we're exiting w/o error) */
+		logt_print(LOG_NOTICE, "Unregistering quorum device.\n");
 		cman_unregister_quorum_device(ctx.qc_cman_admin);
 		quorum_logout(&ctx);
 	}

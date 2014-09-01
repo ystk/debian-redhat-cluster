@@ -1,6 +1,6 @@
 .TH "ccs_tool" "8" "" "" ""
 .SH "NAME"
-ccs_tool \- The tool used to make online updates of CCS config files.
+ccs_tool \- The tool used to make online queries to the cluster configuration.
 
 .SH "SYNOPSIS"
 .B ccs_tool
@@ -8,10 +8,9 @@ ccs_tool \- The tool used to make online updates of CCS config files.
 
 .SH "DESCRIPTION"
 
-\fBccs_tool\fP is part of the Cluster Configuration System (CCS).  It is
-used to make online updates to cluster.conf.  It can also be used to
-upgrade old style (GFS <= 6.0) CCS archives to the new xml cluster.conf
-format.
+\fBccs_tool\fP is part of the Cluster Configuration System (CCS). It used
+to peform different kind of queries to the cluster configuration and has support
+for some cluster.conf editing functions.
 
 .SH "OPTIONS"
 .TP 
@@ -23,6 +22,10 @@ Print the version information.
 
 sub\-commands have their own options, see below for more detail
 .SH "COMMANDS"
+
+.TP
+\fBquery\fP \fI<xpath query>\fP
+Perform an xpath query on running cluster configuration.
 
 .TP 
 \fBaddnode\fP [options] \fI<node> [<fenceoption=value>]...\fP
@@ -51,12 +54,6 @@ section must already have been added to the file, probably using the addfence co
 \-c <file>         Config file to use. Defaults to /etc/cluster/cluster.conf
 .br
 \-o <file>         Output file. Defaults to the same as -c
-.br
-\-C                Don't run "ccs_tool update" after changing file. This will
-happen by default if the input file is the same as the output file.
-.br
-\-F                Force a "ccs_tool update" even if the input and output files
-are different.
 
 
 
@@ -71,12 +68,6 @@ and add it back in with the new properties.
 \-c <file>         Config file to use. Defaults to /etc/cluster/cluster.conf
 .br
 \-o <file>         Output file. Defaults to the same as -c
-.br
-\-C                Don't run "ccs_tool update" after changing file. This will
-happen by default if the input file is the same as the output file.
-.br
-\-F                Force a "ccs_tool update" even if the input and output files
-are different.
 
 
 
@@ -93,12 +84,6 @@ device.
 \-c <file>         Config file to use. Defaults to /etc/cluster/cluster.conf
 .br
 \-o <file>         Output file. Defaults to the same as -c
-.br
-\-C                Don't run "ccs_tool update" after changing file. This will
-happen by default if the input file is the same as the output file.
-.br
-\-F                Force a "ccs_tool update" even if the input and output files
-are different.
 
 .TP 
 \fBdelfence\fP [options] \fI<node>\fP
@@ -112,12 +97,6 @@ invalid configuration file if you don't add it back in again.
 \-c <file>         Config file to use. Defaults to /etc/cluster/cluster.conf
 .br
 \-o <file>         Output file. Defaults to the same as -c
-.br
-\-C                Don't run "ccs_tool update" after changing file. This will
-happen by default if the input file is the same as the output file.
-.br
-\-F                Force a "ccs_tool update" even if the input and output files
-are different.
 
 
 .TP 

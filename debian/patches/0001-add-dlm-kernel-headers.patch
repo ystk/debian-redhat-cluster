@@ -12,7 +12,6 @@ Subject: [PATCH] add dlm kernel headers
  dlm/libdlmcontrol/Makefile       |    1 +
  dlm/tool/Makefile                |    1 +
  group/dlm_controld/Makefile      |    1 +
- group/gfs_controld/Makefile      |    1 +
  group/tool/Makefile              |    1 +
  11 files changed, 553 insertions(+), 1 deletions(-)
  create mode 100644 dlm/include/linux/dlm.h
@@ -21,11 +20,10 @@ Subject: [PATCH] add dlm kernel headers
  create mode 100644 dlm/include/linux/dlm_plock.h
  create mode 100644 dlm/include/linux/dlmconstants.h
 
-diff --git a/dlm/include/linux/dlm.h b/dlm/include/linux/dlm.h
-new file mode 100644
-index 0000000..fbdfe89
---- /dev/null
-+++ b/dlm/include/linux/dlm.h
+Index: redhat-cluster-3.1.8/dlm/include/linux/dlm.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ redhat-cluster-3.1.8/dlm/include/linux/dlm.h	2012-07-05 13:23:51.758800871 -0400
 @@ -0,0 +1,168 @@
 +/******************************************************************************
 +*******************************************************************************
@@ -195,11 +193,10 @@ index 0000000..fbdfe89
 +#endif				/* __KERNEL__ */
 +
 +#endif				/* __DLM_DOT_H__ */
-diff --git a/dlm/include/linux/dlm_device.h b/dlm/include/linux/dlm_device.h
-new file mode 100644
-index 0000000..7754932
---- /dev/null
-+++ b/dlm/include/linux/dlm_device.h
+Index: redhat-cluster-3.1.8/dlm/include/linux/dlm_device.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ redhat-cluster-3.1.8/dlm/include/linux/dlm_device.h	2012-07-05 13:23:51.758800871 -0400
 @@ -0,0 +1,111 @@
 +/******************************************************************************
 +*******************************************************************************
@@ -312,11 +309,10 @@ index 0000000..7754932
 +#define DLM_USER_LSFLG_FORCEFREE  2
 +
 +#endif
-diff --git a/dlm/include/linux/dlm_netlink.h b/dlm/include/linux/dlm_netlink.h
-new file mode 100644
-index 0000000..1927633
---- /dev/null
-+++ b/dlm/include/linux/dlm_netlink.h
+Index: redhat-cluster-3.1.8/dlm/include/linux/dlm_netlink.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ redhat-cluster-3.1.8/dlm/include/linux/dlm_netlink.h	2012-07-05 13:23:51.758800871 -0400
 @@ -0,0 +1,56 @@
 +/*
 + * Copyright (C) 2007 Red Hat, Inc.  All rights reserved.
@@ -374,11 +370,10 @@ index 0000000..1927633
 +#define DLM_GENL_NAME "DLM"
 +
 +#endif /* _DLM_NETLINK_H */
-diff --git a/dlm/include/linux/dlm_plock.h b/dlm/include/linux/dlm_plock.h
-new file mode 100644
-index 0000000..f2eff75
---- /dev/null
-+++ b/dlm/include/linux/dlm_plock.h
+Index: redhat-cluster-3.1.8/dlm/include/linux/dlm_plock.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ redhat-cluster-3.1.8/dlm/include/linux/dlm_plock.h	2012-07-05 13:23:51.758800871 -0400
 @@ -0,0 +1,49 @@
 +/*
 + * Copyright (C) 2005-2008 Red Hat, Inc.  All rights reserved.
@@ -429,11 +424,10 @@ index 0000000..f2eff75
 +#endif /* __KERNEL__ */
 +
 +#endif
-diff --git a/dlm/include/linux/dlmconstants.h b/dlm/include/linux/dlmconstants.h
-new file mode 100644
-index 0000000..47bf08d
---- /dev/null
-+++ b/dlm/include/linux/dlmconstants.h
+Index: redhat-cluster-3.1.8/dlm/include/linux/dlmconstants.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ redhat-cluster-3.1.8/dlm/include/linux/dlmconstants.h	2012-07-05 13:23:51.758800871 -0400
 @@ -0,0 +1,163 @@
 +/******************************************************************************
 +*******************************************************************************
@@ -598,11 +592,11 @@ index 0000000..47bf08d
 +#define DLM_EUNLOCK		0x10002
 +
 +#endif  /* __DLMCONSTANTS_DOT_H__ */
-diff --git a/dlm/libdlm/Makefile b/dlm/libdlm/Makefile
-index dfbfaa5..5bb361e 100644
---- a/dlm/libdlm/Makefile
-+++ b/dlm/libdlm/Makefile
-@@ -29,7 +29,7 @@ include $(OBJDIR)/make/install.mk
+Index: redhat-cluster-3.1.8/dlm/libdlm/Makefile
+===================================================================
+--- redhat-cluster-3.1.8.orig/dlm/libdlm/Makefile	2012-07-05 13:23:45.174800702 -0400
++++ redhat-cluster-3.1.8/dlm/libdlm/Makefile	2012-07-05 13:23:51.758800871 -0400
+@@ -29,7 +29,7 @@
  include $(OBJDIR)/make/uninstall.mk
  
  CFLAGS += -fPIC
@@ -611,11 +605,11 @@ index dfbfaa5..5bb361e 100644
  CFLAGS += -I${incdir}
  CFLAGS += -I$(KERNEL_SRC)/include
  
-diff --git a/dlm/libdlmcontrol/Makefile b/dlm/libdlmcontrol/Makefile
-index 28faedd..3435597 100644
---- a/dlm/libdlmcontrol/Makefile
-+++ b/dlm/libdlmcontrol/Makefile
-@@ -10,6 +10,7 @@ include $(OBJDIR)/make/install.mk
+Index: redhat-cluster-3.1.8/dlm/libdlmcontrol/Makefile
+===================================================================
+--- redhat-cluster-3.1.8.orig/dlm/libdlmcontrol/Makefile	2012-07-05 13:23:45.242800703 -0400
++++ redhat-cluster-3.1.8/dlm/libdlmcontrol/Makefile	2012-07-05 13:23:51.758800871 -0400
+@@ -12,6 +12,7 @@
  include $(OBJDIR)/make/uninstall.mk
  
  CFLAGS += -fPIC
@@ -623,11 +617,11 @@ index 28faedd..3435597 100644
  CFLAGS += -I$(S)/../../group/dlm_controld
  CFLAGS += -I${incdir}
  CFLAGS += -I$(KERNEL_SRC)/include
-diff --git a/dlm/tool/Makefile b/dlm/tool/Makefile
-index 9d75b6c..da40d9c 100644
---- a/dlm/tool/Makefile
-+++ b/dlm/tool/Makefile
-@@ -12,6 +12,7 @@ include $(OBJDIR)/make/uninstall.mk
+Index: redhat-cluster-3.1.8/dlm/tool/Makefile
+===================================================================
+--- redhat-cluster-3.1.8.orig/dlm/tool/Makefile	2012-07-05 13:23:45.226800703 -0400
++++ redhat-cluster-3.1.8/dlm/tool/Makefile	2012-07-05 13:23:51.758800871 -0400
+@@ -12,6 +12,7 @@
  
  OBJS=	main.o
  
@@ -635,11 +629,11 @@ index 9d75b6c..da40d9c 100644
  CFLAGS += -I${dlmincdir} -I${dlmcontrolincdir}
  CFLAGS += -I$(SRCDIR)/group/dlm_controld/
  CFLAGS += -I${incdir}
-diff --git a/group/dlm_controld/Makefile b/group/dlm_controld/Makefile
-index b165dbc..ed4a302 100644
---- a/group/dlm_controld/Makefile
-+++ b/group/dlm_controld/Makefile
-@@ -35,6 +35,7 @@ CFLAGS += -I${ccsincdir} -I${cmanincdir} -I${logtincdir}
+Index: redhat-cluster-3.1.8/group/dlm_controld/Makefile
+===================================================================
+--- redhat-cluster-3.1.8.orig/group/dlm_controld/Makefile	2012-07-05 13:23:45.258800704 -0400
++++ redhat-cluster-3.1.8/group/dlm_controld/Makefile	2012-07-05 13:23:51.758800871 -0400
+@@ -26,6 +26,7 @@
  CFLAGS += -I${dlmincdir} -I${dlmcontrolincdir}
  CFLAGS += -I${corosyncincdir} -I${openaisincdir}
  CFLAGS += -I${fencedincdir}
@@ -647,28 +641,15 @@ index b165dbc..ed4a302 100644
  CFLAGS += -I${KERNEL_SRC}/include/
  CFLAGS += -I$(S)/../lib/ -I$(S)/../include/
  CFLAGS += -I${incdir}
-diff --git a/group/gfs_controld/Makefile b/group/gfs_controld/Makefile
-index 9d07a36..01a656d 100644
---- a/group/gfs_controld/Makefile
-+++ b/group/gfs_controld/Makefile
-@@ -34,6 +34,7 @@ OBJS=		$(SHAREDOBJS) \
- 
- CFLAGS += -I${ccsincdir} -I${cmanincdir} -I${logtincdir} -I${dlmcontrolincdir}
- CFLAGS += -I${corosyncincdir} -I${openaisincdir} -I${fencedincdir}
-+CFLAGS += -I$(S)/../../dlm/include
- CFLAGS += -I${KERNEL_SRC}/include/
- CFLAGS += -I$(S)/../libgfscontrol
- CFLAGS += -I$(S)/../lib/ -I$(S)/../include/
-diff --git a/group/tool/Makefile b/group/tool/Makefile
-index d6421f6..8d2d467 100644
---- a/group/tool/Makefile
-+++ b/group/tool/Makefile
-@@ -12,6 +12,7 @@ include $(OBJDIR)/make/uninstall.mk
+Index: redhat-cluster-3.1.8/group/tool/Makefile
+===================================================================
+--- redhat-cluster-3.1.8.orig/group/tool/Makefile	2012-07-05 13:23:45.274800705 -0400
++++ redhat-cluster-3.1.8/group/tool/Makefile	2012-07-05 13:23:51.758800871 -0400
+@@ -12,6 +12,7 @@
  
  OBJS=	main.o
  
 +CFLAGS += -I$(S)/../../dlm/include/
  CFLAGS += -I$(S) -I$(S)/../daemon/ -I$(S)/../lib/
- CFLAGS += -I${dlmcontrolincdir}
- CFLAGS += -I${fencedincdir}
--- 
+ CFLAGS += -I${incdir}
+ CFLAGS += -I${KERNEL_SRC}/include/

@@ -364,8 +364,10 @@ sock_msg_listen(int me, const void *portp, msgctx_t **listen_ctx)
 		return -1;
 
 	sock = socket(PF_LOCAL, SOCK_STREAM, 0);
-	if (sock < 0)
+	if (sock < 0) {
+		msg_free_ctx(ctx);
 		return -1;
+	}
 
 	set_cloexec(sock);
 	unlink(RGMGR_SOCK);

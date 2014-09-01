@@ -3,30 +3,27 @@ Section: admin
 Priority: optional
 Maintainer: Debian HA Maintainers <debian-ha-maintainers@lists.alioth.debian.org>
 Uploaders: Bastian Blank <waldi@debian.org>, Frederik Schüler <fs@debian.org>,
- Guido Günther <agx@sigxcpu.org> 
-Standards-Version: 3.8.3
+ Guido Günther <agx@sigxcpu.org>, Martin Loschwitz <madkiss@debian.org> 
+Standards-Version: 3.9.3
 Vcs-Browser: http://git.debian.org/?p=debian-ha/redhat-cluster.git;a=summary
 Vcs-Git: git://git.debian.org/debian-ha/redhat-cluster.git
-Build-Depends: quilt, debhelper (>= 5), libxml2-dev, libncurses5-dev,
+Build-Depends: debhelper (>= 9), libxml2-dev, libncurses5-dev,
  linux-libc-dev, libvirt-dev (>= 0.3.0), libnss3-dev, libnspr4-dev, bzip2, libslang2-dev, libldap2-dev, perl-modules,
- libcorosync-dev (>= 1.2.1),
- libopenais-dev (>= 1.1.1),
- openais-dev,
+ libcorosync-dev (>= 1.3.0),
+ libopenais-dev (>= 1.1.4),
+ openais-dev (>= 1.1.4),
  xsltproc,
  python-pexpect,
  po-debconf,
- libcluster-glue-dev,
  libglib2.0-dev,
  libbz2-dev,
- pacemaker-dev
+ libltdl7-dev,
+ libdbus-1-dev
 
 Package: redhat-cluster-suite
-Section: admin
-Priority: optional
 Architecture: all
-Depends: ${misc:Depends}, cman (>= ${binary:Version}),
- gfs-tools (>= ${binary:Version}), gfs2-tools (>= ${binary:Version}),
- rgmanager (>= ${binary:Version})
+Depends: ${misc:Depends}, cman (>= ${binary:Version}), rgmanager (>= ${binary:Version}),
+ gfs2-utils (>= 3.1), fence-agents, resource-agents
 Description: Red Hat cluster suite - metapackage
  RHCS is a cluster management infrastructure, for building
  high-availability multi-node clusters with service and IP failover on
@@ -37,13 +34,12 @@ Description: Red Hat cluster suite - metapackage
 
 Package: cman
 Architecture: any
-Section: admin
 Pre-Depends: debconf | debconf-2.0
 Depends: ${misc:Depends}, ${shlibs:Depends}, corosync (>= 1.2.1),
  openais (>= 1.1.1), python, openipmi, sg3-utils, python-pexpect,
- libnet-snmp-perl, libnet-telnet-perl, snmp, telnet | telnet-client, openssh-client,
- python-openssl, libxml2-utils
-Conflicts: libdlm-dev (<= 2.20090112-0ubuntu3), fence-agents
+ libnet-snmp-perl, libnet-telnet-perl, snmp, telnet, openssh-client,
+ python-openssl, libxml2-utils, xsltproc
+Conflicts: libdlm-dev (<= 2.20090112-0ubuntu3)
 Description: Red Hat cluster suite - cluster manager
  This package is part of the Red Hat Cluster Suite, a complete
  high-availability solution.
@@ -233,46 +229,6 @@ Description: Red Hat cluster suite - fence server development files
  This package contains the files needed for developing applications
  that need to request node fencing.
 
-Package: gfs-tools
-Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends}, gfs2-tools
-Recommends: redhat-cluster-modules
-Section: admin
-Description: Red Hat cluster suite - global file system tools
- This package is part of the Red Hat Cluster Suite, a complete
- high-availability solution.
- .
- The Global File System allows a cluster of machines to concurrently access
- shared storage hardware like SANs or iSCSI and network block devices. GFS
- can be deployed to build high-availability services without the single point
- of failure of a file server.
- .
- This package contains tools for creating and managing global file systems.
- GFS itself is a set of kernel modules.
- .
- Note: the package requires gfs2-tools installed; this is known to be
- reliable even though the GFS2 kernel modules themselves are highly
- experimental and *MUST NOT* be used in a production environment yet.
-
-Package: gfs2-tools
-Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends}, psmisc, cman
-Section: admin
-Description: Red Hat cluster suite - global file system 2 tools
- This package is part of the Red Hat Cluster Suite, a complete
- high-availability solution.
- .
- The Global File System allows a cluster of machines to concurrently access
- shared storage hardware like SANs or iSCSI and network block devices. GFS
- can be deployed to build high-availability services without the single point
- of failure of a file server.
- .
- This package contains tools for creating and managing global file systems.
- GFS itself is a set of kernel modules.
- .
- The GFS2 kernel modules themselves are highly experimental and *MUST NOT*
- be used in a production environment yet.
-
 Package: rgmanager
 Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends}, cman (= ${binary:Version}),
@@ -285,33 +241,3 @@ Description: Red Hat cluster suite - clustered resource group manager
  .
  Resource Group Manager provides high availability of critical server
  applications in the event of planned or unplanned system downtime.
-
-Package: redhat-cluster-source
-Architecture: all
-Depends: ${misc:Depends}, bzip2
-Description: Red Hat cluster suite - kernel module source
- This package is part of the Red Hat Cluster Suite, a complete
- high-availability solution.
- .
- This package contains the source necessary for compiling the Red Hat
- Cluster Suite out-of-tree kernel module gfs against the Linux kernel
- source tree.
-
-Package: dlm-pcmk
-Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends}
-Description: Red Hat cluster suite - DLM pacemaker module
- This package is part of the Red Hat Cluster Suite, a complete
- high-availability solution.
- .
- This package contains the DLM module for pacemaker.
-
-Package: gfs-pcmk
-Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends}
-Description: Red Hat cluster suite - GFS pacemaker module
- This package is part of the Red Hat Cluster Suite, a complete
- high-availability solution.
- .
- This package contains the GFS module for pacemaker.
-

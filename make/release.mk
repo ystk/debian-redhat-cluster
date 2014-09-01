@@ -16,24 +16,14 @@ projectver=$(project)-$(version)
 projecttar=$(projectver).tar
 projectgz=$(projecttar).gz
 projectbz=$(projecttar).bz2
-
-fenceproject=fence-agents
-fenceprojectver=$(fenceproject)-$(version)
-fenceprojecttar=$(fenceprojectver).tar
-fenceprojectgz=$(fenceprojecttar).gz
-fenceprojectbz=$(fenceprojecttar).bz2
-
-rasproject=resource-agents
-rasprojectver=$(rasproject)-$(version)
-rasprojecttar=$(rasprojectver).tar
-rasprojectgz=$(rasprojecttar).gz
-rasprojectbz=$(rasprojecttar).bz2
+projectxz=$(projecttar).xz
 
 rgmproject=rgmanager
 rgmprojectver=$(rgmproject)-$(version)
 rgmprojecttar=$(rgmprojectver).tar
 rgmprojectgz=$(rgmprojecttar).gz
 rgmprojectbz=$(rgmprojecttar).bz2
+rgmprojectxz=$(rgmprojecttar).xz
 
 # temp dirs
 
@@ -84,15 +74,11 @@ tarballs: tag
 tarballs: $(releasearea)/$(projecttar)
 tarballs: $(releasearea)/$(projectgz)
 tarballs: $(releasearea)/$(projectbz)
-tarballs: $(releasearea)/$(fenceprojecttar)
-tarballs: $(releasearea)/$(fenceprojectgz)
-tarballs: $(releasearea)/$(fenceprojectbz)
-tarballs: $(releasearea)/$(rasprojecttar)
-tarballs: $(releasearea)/$(rasprojectgz)
-tarballs: $(releasearea)/$(rasprojectbz)
+tarballs: $(releasearea)/$(projectxz)
 tarballs: $(releasearea)/$(rgmprojecttar)
 tarballs: $(releasearea)/$(rgmprojectgz)
 tarballs: $(releasearea)/$(rgmprojectbz)
+tarballs: $(releasearea)/$(rgmprojectxz)
 
 $(releasearea)/$(projecttar):
 	@echo Creating $(project) tarball
@@ -103,45 +89,10 @@ $(releasearea)/$(projecttar):
 		$(gitver) | \
 		(cd $(releasearea)/ && tar xf -)
 	cd $(releasearea) && \
-	sed -i -e \
-		's#<CVS>#$(version)#g' \
-		$(projectver)/gfs-kernel/src/gfs/gfs.h && \
 	echo "VERSION \"$(version)\"" \
 		>> $(projectver)/make/official_release_version && \
 	tar cpf $(projecttar) $(projectver) && \
 	rm -rf $(projectver)
-
-$(releasearea)/$(fenceprojecttar): $(releasearea)/$(projecttar)
-	@echo Creating $(fenceproject) tarball
-	cd $(releasearea) && \
-	rm -rf $(projectver) $(fenceprojectver) && \
-	tar xpf $(projecttar) && \
-	mv $(projectver) $(fenceprojectver) && \
-	cd $(fenceprojectver) && \
-	rm -rf bindings cman common config contrib dlm gfs* group \
-		rgmanager fence/fenced fence/fence_node \
-		fence/fence_tool fence/include fence/libfence \
-		fence/libfenced fence/man && \
-	cd .. && \
-	tar cpf $(fenceprojecttar) $(fenceprojectver) && \
-	rm -rf $(fenceprojectver)
-
-$(releasearea)/$(rasprojecttar): $(releasearea)/$(projecttar)
-	@echo Creating $(rasproject) tarball
-	cd $(releasearea) && \
-	rm -rf $(projectver) $(rasprojectver) && \
-	tar xpf $(projecttar) && \
-	mv $(projectver) $(rasprojectver) && \
-	cd $(rasprojectver) && \
-	rm -rf bindings cman common config contrib dlm fence gfs* \
-		group rgmanager/ChangeLog rgmanager/errors.txt \
-		rgmanager/event-script.txt rgmanager/examples \
-		rgmanager/include rgmanager/init.d rgmanager/man \
-		rgmanager/README rgmanager/src/clulib \
-		rgmanager/src/daemons rgmanager/src/utils && \
-	cd .. && \
-	tar cpf $(rasprojecttar) $(rasprojectver) && \
-	rm -rf $(rasprojectver)
 
 $(releasearea)/$(rgmprojecttar): $(releasearea)/$(projecttar)
 	@echo Creating $(rgmproject) tarball
@@ -150,8 +101,11 @@ $(releasearea)/$(rgmprojecttar): $(releasearea)/$(projecttar)
 	tar xpf $(projecttar) && \
 	mv $(projectver) $(rgmprojectver) && \
 	cd $(rgmprojectver) && \
-	rm -rf bindings cman common config contrib dlm fence gfs* group \
-		rgmanager/src/resources && \
+	rm -rf bindings cman common config contrib dlm fence group \
+		doc/cluster_conf.html && \
+	sed -i \
+		-e 's#cluster_conf.html##g' \
+		-e 's#README.licence.*#README.licence#g' doc/Makefile && \
 	cd .. && \
 	tar cpf $(rgmprojecttar) $(rgmprojectver) && \
 	rm -rf $(rgmprojectver)
@@ -164,6 +118,10 @@ $(releasearea)/%.bz2: $(releasearea)/%
 	@echo Creating $@
 	cat $< | bzip2 -c > $@
 
+$(releasearea)/%.xz: $(releasearea)/%
+	@echo Creating $@
+	cat $< | xz -z -9 > $@
+
 changelog: checks setup $(releasearea)/Changelog-$(version)
 
 $(releasearea)/Changelog-$(version): $(releasearea)/$(projecttar)
@@ -175,7 +133,7 @@ sha256: changelog tarballs $(releasearea)/$(projectver).sha256
 
 $(releasearea)/$(projectver).sha256: $(releasearea)/Changelog-$(version)
 	cd $(releasearea) && \
-	sha256sum Changelog-$(version) *.gz *.bz2 | sort -k2 > $@
+	sha256sum Changelog-$(version) *.gz *.bz2 *.xz | sort -k2 > $@
 
 sign: sha256 $(releasearea)/$(projectver).sha256.asc
 
@@ -192,7 +150,7 @@ ifeq (,$(release))
 else
 	git push --tags origin
 	cd $(releasearea) && \
-	scp *.gz *.bz2 Changelog-* *sha256* \
+	scp *.gz *.bz2 *.xz Changelog-* *sha256* \
 		fedorahosted.org:$(project)
 	@echo Hey you!.. yeah you looking somewhere else!
 	@echo remember to update the wiki and send the email to cluster-devel and linux-cluster
