@@ -73,10 +73,42 @@ static int dump_objdb_buff(confdb_handle_t dump_handle, hdb_handle_t cluster_han
 		confdb_key_iter(dump_handle, parent_object_handle, key_name,
 				&key_name_len, key_value,
 				&key_value_len)) == CS_OK) {
+		int char_pos = 0;
 		key_name[key_name_len] = '\0';
 		key_value[key_value_len] = '\0';
 
-		snprintf(temp, PATH_MAX - 1, " %s=\"%s\"", key_name, key_value);
+		snprintf(temp, PATH_MAX - 1, " %s=\"", key_name);
+		if (add_to_buffer(temp, buffer, bufsize))
+			return -1;
+
+		for (char_pos = 0; char_pos < key_value_len-1; char_pos++) {
+			switch (key_value[char_pos]) {
+
+			case '&':
+				snprintf(temp, PATH_MAX - 1, "&amp;");
+				break;
+			case '<':
+				snprintf(temp, PATH_MAX - 1, "&lt;");
+				break; 
+			case '>':
+				snprintf(temp, PATH_MAX - 1, "&gt;");
+				break; 
+			case '"':
+				snprintf(temp, PATH_MAX - 1, "&quot;");
+				break;
+			case '\'':
+				snprintf(temp, PATH_MAX - 1, "&apos;");
+				break;
+			default:
+				temp[0] = key_value[char_pos];
+				temp[1] = '\0';
+				break;
+			}
+			if (add_to_buffer(temp, buffer, bufsize))
+				return -1;
+		}
+
+		snprintf(temp, PATH_MAX - 1, "\"");
 		if (add_to_buffer(temp, buffer, bufsize))
 			return -1;
 	}

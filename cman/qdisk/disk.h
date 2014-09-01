@@ -273,6 +273,12 @@ typedef struct {
 	status_block_t ni_status;
 } node_info_t;
 
+typedef struct {
+	qd_ctx *ctx;
+	node_info_t *ni;
+	size_t ni_len;
+} qd_priv_t;
+
 int qd_write_status(qd_ctx *ctx, int nid, disk_node_state_t state,
 		    disk_msg_t *msg, memb_mask_t mask, memb_mask_t master);
 int qd_init(qd_ctx *ctx, cman_handle_t ch_admin,

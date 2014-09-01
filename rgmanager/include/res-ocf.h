@@ -14,6 +14,7 @@
 #define OCF_CHECK_LEVEL_STR "OCF_CHECK_LEVEL"
 #define OCF_RESOURCE_TYPE_STR "OCF_RESOURCE_TYPE"
 #define OCF_REFCNT_STR "OCF_RESKEY_RGMANAGER_meta_refcnt"
+#define OCF_TIMEOUT_STR "OCF_RESKEY_RGMANAGER_meta_timeout"
 
 /*
    LSB return codes 
@@ -47,5 +48,6 @@
 #define RS_MIGRATE	(13)
 #define RS_RECONFIG	(14)
 #define RS_STATUS_INQUIRY (15)	/** Quick status */
+#define RS_CONVALESCE	(16)
 
 #endif

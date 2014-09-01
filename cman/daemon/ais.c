@@ -14,6 +14,8 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <inttypes.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 /* corosync headers */
 #include <corosync/corotypes.h>
@@ -219,6 +221,15 @@ static int cman_exec_init_fn(struct corosync_api_v1 *api)
 	/* Start totem */
 	api->tpg_init(&group_handle, cman_deliver_fn, cman_confchg_fn);
 	api->tpg_join(group_handle, cman_group, 1);
+
+	if (getenv("CMAN_NOSTDERR_DEBUG")) {
+		int tmpfd;
+		tmpfd = open("/dev/null", O_RDWR);
+		if (tmpfd > -1 && tmpfd != STDERR_FILENO) {
+			dup2(tmpfd, STDERR_FILENO);
+			close(tmpfd);
+		}
+	}
 
 	return 0;
 }

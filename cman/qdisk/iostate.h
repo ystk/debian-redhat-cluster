@@ -11,7 +11,9 @@ typedef enum {
 
 void io_state(iostate_t state);
 
-int io_nanny_start(int timeout);
+int io_nanny_start(cman_handle_t ch, int timeout);
 int io_nanny_stop(void);
+
+const char * state_to_string(iostate_t state);
 
 #endif

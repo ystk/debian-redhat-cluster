@@ -755,13 +755,6 @@ vf_try_commit(key_node_t *key_node)
 	free(cmp); /* no need for it any longer */
 		
 	vnp = vn_remove(&key_node->kn_jvlist, trans);
-	if (!vnp) {
-		/*
-		 * But, we know it was the first element on the list?!!
-		 */
-		fprintf(stderr,"VF: QUAAAAAAAAAAAAAACKKKK!");
-		raise(SIGSTOP);
-	}
 	
 #ifdef DEBUG
 	printf("VF: Commit Key %s #%d from member #%d\n",
@@ -1201,6 +1194,7 @@ vf_write(cluster_member_list_t *membership, uint32_t flags,
 	 */
 	if (msg_open(MSG_CLUSTER, 0, _port, &everyone, 0) < 0) {
 		printf("msg_open: fail: %s\n", strerror(errno));
+		free(join_view);
 		clu_unlock(&lockp);
 		pthread_mutex_unlock(&vf_mutex);
 		return -1;
@@ -1495,16 +1489,20 @@ vf_read(cluster_member_list_t *membership, const char *keyid, uint64_t *view,
 		}
 	}
 
-	*data = malloc(key_node->kn_datalen);
-	if (! *data) {
-		pthread_mutex_unlock(&key_list_mutex);
-		clu_unlock(&lockp);
-		pthread_mutex_unlock(&vf_mutex);
-		printf("Couldn't malloc %s\n", keyid);
-		return VFR_ERROR;
-	}
+	if (key_node->kn_datalen && key_node->kn_data) {
+		*data = malloc(key_node->kn_datalen);
+		if (! *data) {
+			pthread_mutex_unlock(&key_list_mutex);
+			clu_unlock(&lockp);
+			pthread_mutex_unlock(&vf_mutex);
+			printf("Couldn't malloc %s\n", keyid);
+			return VFR_ERROR;
+		}
 
-	memcpy(*data, key_node->kn_data, key_node->kn_datalen);
+		memcpy(*data, key_node->kn_data, key_node->kn_datalen);
+	} else {
+		*data = NULL;
+	}
 	*datalen = key_node->kn_datalen;
 	*view = key_node->kn_viewno;
 

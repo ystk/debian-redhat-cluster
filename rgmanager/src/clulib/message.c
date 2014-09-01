@@ -259,7 +259,7 @@ msg_new_ctx(void)
 	if (!p)
 		return NULL;
 
-	memset(p, 0, sizeof(p));
+	memset(p, 0, sizeof(*p));
 	p->type = MSG_NONE;
 
 	return p;

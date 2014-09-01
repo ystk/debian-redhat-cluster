@@ -983,18 +983,6 @@ static void read_arguments(int argc, char **argv)
 	}
 }
 
-static void set_oom_adj(int val)
-{
-	FILE *fp;
-
-	fp = fopen("/proc/self/oom_adj", "w");
-	if (!fp)
-		return;
-
-	fprintf(fp, "%i", val);
-	fclose(fp);
-}
-
 static void set_scheduler(void)
 {
 	struct sched_param sched_param;
@@ -1035,7 +1023,6 @@ int main(int argc, char *argv[])
 	log_level(LOG_INFO, "groupd %s", RELEASE_VERSION);
 	signal(SIGTERM, sigterm_handler);
 	set_scheduler();
-	set_oom_adj(-16);
 
 	loop();
 

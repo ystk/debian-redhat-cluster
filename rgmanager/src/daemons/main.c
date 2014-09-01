@@ -23,12 +23,12 @@
 #include <members.h>
 #include <daemon_init.h>
 #include <groups.h>
+#include <rg_dbus.h>
 
 #ifdef WRAP_THREADS
 void dump_thread_states(FILE *);
 #endif
 static int configure_rgmanager(int ccsfd, int debug, int *cluster_timeout);
-void set_transition_throttling(int);
 
 void flag_shutdown(int sig);
 
@@ -42,7 +42,7 @@ static int signalled = 0;
 static uint8_t ALIGNED port = RG_PORT;
 static char *rgmanager_lsname = (char *)"rgmanager"; /* XXX default */
 static int status_poll_interval = DEFAULT_CHECK_INTERVAL;
-
+static int stops_queued = 0;
 
 static void
 segfault(int __attribute__ ((unused)) sig)
@@ -654,7 +654,11 @@ static void
 dump_internal_state(const char *loc)
 {
 	FILE *fp;
+	if (!loc)
+		return;
 	fp=fopen(loc, "w+");
+	if (!fp)
+		return;
  	dump_config_version(fp);
  	dump_threads(fp);
  	dump_vf_states(fp);
@@ -683,6 +687,8 @@ event_loop(msgctx_t *localctx, msgctx_t *clusterctx)
 
 		dump_internal_state("/var/lib/cluster/rgmanager-dump");
 	}
+
+	rgm_dbus_init();
 
 	while (running && (tv.tv_sec || tv.tv_usec)) {
 		FD_ZERO(&rfds);
@@ -743,6 +749,14 @@ event_loop(msgctx_t *localctx, msgctx_t *clusterctx)
 	if (need_reconfigure) {
 		need_reconfigure = 0;
 		configure_rgmanager(-1, 0, NULL);
+
+		/*
+		 * A shutdown during reconfiguration would slow down
+		 * the exit request, so it's pointless to run the
+		 * deltas at this point
+		 */
+		if (shutdown_pending)
+			return 0;
 		config_event_q();
 		return 0;
 	}
@@ -776,11 +790,40 @@ cleanup(msgctx_t *clusterctx)
 }
 
 
-
 static void
 statedump(int __attribute__ ((unused)) sig)
 {
 	signalled++;
+}
+
+
+static int
+rgmanager_disabled(int ccsfd)
+{
+	char *v;
+	int disabled = 0;
+	int internal = 0;
+
+	if (ccsfd < 0) {
+		internal = 1;
+		ccsfd = ccs_force_connect(NULL, 0);
+		if (ccsfd < 0)
+			return -1;
+	}
+
+	if (ccs_get(ccsfd, "/cluster/rm/@disabled", &v) == 0) {
+		if (atoi(v) == 1) {
+			disabled = 1;
+			shutdown_pending = 1;
+			logt_print(LOG_NOTICE, "Resource Group Manager Disabled\n");
+		}
+		free(v);
+	}
+
+	if (internal)
+		ccs_disconnect(ccsfd);
+
+	return disabled;
 }
 
 
@@ -803,6 +846,8 @@ configure_rgmanager(int ccsfd, int dbg, int *token_secs)
 	}
 
 	setup_logging(ccsfd);
+
+	rgmanager_disabled(ccsfd);
 
 	if (token_secs && ccs_get(ccsfd, "/cluster/totem/@token", &v) == 0) {
 		tmp = atoi(v);
@@ -928,7 +973,7 @@ static void *
 shutdown_thread(void __attribute__ ((unused)) *arg)
 {
 	rg_lockall(L_SYS|L_SHUTDOWN);
-	rg_doall(RG_STOP_EXITING, 1, NULL);
+	stops_queued = rg_doall(RG_STOP_EXITING, 1, NULL);
 	running = 0;
 
 	pthread_exit(NULL);
@@ -949,7 +994,7 @@ main(int argc, char **argv)
 	pthread_t th;
 	cman_handle_t clu = NULL;
 
-	while ((rv = getopt(argc, argv, "wfdN")) != EOF) {
+	while ((rv = getopt(argc, argv, "wfdNq")) != EOF) {
 		switch (rv) {
 		case 'w':
 			wd = 0;
@@ -963,6 +1008,9 @@ main(int argc, char **argv)
 		case 'f':
 			foreground = 1;
 			break;
+		case 'q':
+			rgm_dbus_notify = 0;
+			break;
 		default:
 			return 1;
 			break;
@@ -971,6 +1019,13 @@ main(int argc, char **argv)
 
 	if (getenv("RGMANAGER_DEBUG")) {
 		debug = 1;
+	}
+
+	/* If we're disabled in the configuration, don't fork */
+	if (rgmanager_disabled(-1) > 0) {
+		fprintf(stderr,
+			"rgmanager disabled in configuration; not starting\n");
+		return 2;
 	}
 
 	if (!foreground && (geteuid() == 0)) {
@@ -1029,8 +1084,18 @@ main(int argc, char **argv)
 	   We know we're quorate.  At this point, we need to
 	   read the resource group trees from ccsd.
 	 */
+	xmlInitParser();
 	configure_rgmanager(-1, debug, &cluster_timeout);
+	if (shutdown_pending == 1)
+		goto out_ls;
+
 	logt_print(LOG_NOTICE, "Resource Group Manager Starting\n");
+
+	if (rgm_dbus_notify && rgm_dbus_init() != 0) {
+		rgm_dbus_notify = 0;
+		logt_print(LOG_NOTICE, "Failed to initialize DBus; "
+			   "notifications disabled\n");
+	}
 
 	if (init_resource_groups(0, do_init) != 0) {
 		logt_print(LOG_CRIT, "#8: Couldn't initialize services\n");
@@ -1074,7 +1139,8 @@ main(int argc, char **argv)
 
 	ds_key_init("rg_lockdown", 32, 10);
 #else
-	if (vf_init(me.cn_nodeid, port, NULL, NULL, cluster_timeout) != 0) {
+	if (vf_init(me.cn_nodeid, port, NULL, RGM_DBUS_UPDATE,
+		    cluster_timeout) != 0) {
 		logt_print(LOG_CRIT, "#11: Couldn't set up VF listen socket\n");
 		goto out_ls;
 	}
@@ -1102,12 +1168,23 @@ main(int argc, char **argv)
 	if (rg_initialized())
 		cleanup(cluster_ctx);
 	rv = 0;
+	xmlCleanupParser();
 out_ls:
 	clu_lock_finished(rgmanager_lsname);
 
 out:
-	logt_print(LOG_NOTICE, "Shutdown complete, exiting\n");
+	rgm_dbus_release();
+	logt_print(LOG_DEBUG, "Stopped %d services\n", stops_queued);
+	logt_print(LOG_NOTICE, "Disconnecting from CMAN\n");
 	cman_finish(clu);
+
+	if (stops_queued && !central_events_enabled()) {
+		logt_print(LOG_DEBUG, "Pausing to allow services to "
+			   "start on other node(s)\n");
+		sleep(get_transition_throttling() * 3);
+	}
+
+	logt_print(LOG_NOTICE, "Exiting\n");
 	
 	close_logging();
 	/*malloc_stats();*/

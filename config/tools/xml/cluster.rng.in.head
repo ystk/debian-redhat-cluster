@@ -1,0 +1,1116 @@
+<grammar  datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes"
+xmlns="http://relaxng.org/ns/structure/1.0"
+xmlns:rha="http://redhat.com/~pkennedy/annotation_namespace/cluster_conf_annot_namespace">
+
+<!-- The cluster.conf schema follows this outline:
+
+cluster
+- cman
+- totem
+- uidgid
+- quorumd
+- fence_daemon
+- fence_xvmd
+- dlm
+- gfs_controld
+- group
+- logging
+- clusternodes
+- fencedevices
+- rm
+- clvmd
+
+Element defnitions:
+- Resource
+- Fence
+
+To validate your cluster.conf against this schema, run:
+
+  xmllint \-\-relaxng cluster.rng /path/to/cluster.conf
+
+-->
+
+<start>
+<element name="cluster" rha:description="Defines cluster properties, and
+    contains all other configuration. cluster.conf(5)">
+ <attribute name="name" rha:description="Name of the cluster.
+     cluster.conf(5)"/>
+ <attribute name="config_version" rha:description="Revision level
+     of cluster.conf file. cluster.conf(5)"/>
+ <interleave>
+
+<!-- cman block -->
+ <optional>
+   <element name="cman" rha:description="The cman element contains
+       attributes that define the following cluster-wide parameters and
+       behaviors: whether the cluster is a two-node cluster, expected
+       votes, user-specified multicast address, and logging.">
+    <optional>
+     <attribute name="two_node" rha:description="The two_node attribute
+         allows you to configure a cluster with only two
+         nodes. Ordinarily, the loss of quorum after one of two nodes
+         fails prevents the remaining node from continuing (if both
+         nodes have one vote.) To enable a two-node cluster, set the
+         two_node value equal to 1. If the two_node value is enabled,
+         the expected_votes value must be set to 1." rha:sample="1"/>
+    </optional>
+    <optional>
+     <attribute name="expected_votes" rha:description="The expected
+         votes value is used by cman to determine quorum. The cluster
+         is quorate if the sum of votes of members is over
+         half of the expected votes value. By default, cman sets the
+         expected votes value to be the sum of votes of all nodes listed
+         in cluster.conf. This can be overriden by setting an explicit
+         expected_votes value." rha:sample="4">
+      <data type="positiveInteger"/>
+     </attribute>
+    </optional>
+    <optional>
+     <attribute name="upgrading" rha:description="Set this if you are
+         performing a rolling upgrade of the cluster between major
+         releases." rha:sample="no"/>
+    </optional>
+    <optional>
+      <attribute name="disallowed" rha:description="Set this to 1 enable
+         cman's Disallowed mode. This is usually only needed for 
+         backwards compatibility." rha:sample="1">
+       <data type="nonNegativeInteger"/>
+      </attribute>
+    </optional>
+    <optional>
+     <attribute name="quorum_dev_poll" rha:description="The amount of time
+         after a qdisk poll, in milliseconds, before a quorum disk is
+         considered dead. The quorum disk daemon, qdisk, periodically
+         sends hello messages to cman and ais, indicating that qdisk
+         is present. If qdisk takes more time to send a hello message
+         to cman and ais than by quorum_dev_poll, then cman declares
+         qdisk dead and prints a message indicating that connection to
+         the quorum device has been lost." rha:sample="50000">
+      <data type="nonNegativeInteger"/>
+     </attribute>
+    </optional>
+    <!--FIXME: Clarify the following. What is meant by "service"? Also, is
+     there a default value? What is a good sample value?-->
+    <optional>
+     <attribute name="shutdown_timeout" rha:description="Timeout period,
+         in milliseconds, to allow a service to respond during a
+         shutdown." rha:sample="5000">
+      <data type="nonNegativeInteger"/>
+     </attribute>
+    </optional>
+    <optional>
+     <attribute name="ccsd_poll" rha:description="" rha:sample=""
+         rha:default="1000">
+      <data type="nonNegativeInteger"/>
+     </attribute>
+    </optional>
+    <optional>
+     <attribute name="debug_mask" rha:description="" rha:sample=""/>
+    </optional>
+    <optional>
+     <attribute name="port">
+      <data type="nonNegativeInteger"/>
+     </attribute>
+    </optional>
+    <optional>
+     <attribute name="cluster_id">
+      <data type="nonNegativeInteger"/>
+     </attribute>
+    </optional>
+    <optional>
+     <attribute name="hash_cluster_id" rha:description="Enable stronger hashing of cluster ID to avoid collisions." />
+    </optional>
+    <optional>
+     <attribute name="nodename" rha:description="Local node name; this is set internally by cman-preconfig and should never be set by a user."/>
+    </optional>
+    <optional>
+     <attribute name="broadcast" rha:description="enable cman broadcast" rha:default="no"/>
+    </optional>
+    <optional>
+     <attribute name="transport" rha:description="Specifies transport mechanism to use. Available values are udp (multicast default), udpb (broadcast), udpu (unicast) and rdma (Infiniband).  corosync.conf(5)" rha:sample="">
+     <choice>
+       <value>udp</value>
+       <value>udpb</value>
+       <value>udpu</value>
+       <value>rdma</value>
+      </choice>
+     </attribute>
+    </optional>
+    <optional>
+     <attribute name="keyfile" rha:description=""/>
+    </optional>
+    <optional>
+     <attribute name="disable_openais"/>
+    </optional>
+    <optional>
+     <element name="multicast" rha:description="The multicast element
+         provides the ability for a user to specify a multicast address,
+         port and TTL (Time To Live) instead of using cman defaults. If
+         a user does not specify a multicast address, cman creates one. It
+         forms the upper 16 bits of the multicast address with 239.192 for
+         IPv4 and ff15:: for IPv6 and forms the lower 16 bits based on
+         the cluster ID.">
+      <ref name="MULTICASTOPTS"/>
+     </element>
+    </optional>
+    <optional>
+     <element name="altmulticast" rha:description="The altmulticast element
+         provides the ability for a user to specify a multicast address,
+         port and TTL (Time To Live) instead of using cman defaults for
+         the alternate communication channel (RRP). If a user does not
+         specify an alternate multicast address, cman creates one. It
+         forms the upper 16 bits of the multicast address with 239.192 for
+         IPv4 and ff15:: for IPv6 and forms the lower 16 bits based on
+         the cluster ID + 1.">
+      <ref name="MULTICASTOPTS"/>
+     </element>
+    </optional>
+   </element>
+ </optional>
+<!-- end cman block -->
+
+<!-- uidgid block -->
+ <optional>
+  <zeroOrMore>
+   <element name="uidgid" rha:description="Access control to corosync IPC">
+    <optional>
+     <attribute name="uid" rha:description="This is an unprivileged username,
+         as globally available to the system via /etc/passwd, including nis/ldap,
+         allowed to connect to corosync IPC. This value cannot be updated at runtime,
+         a full cman restart is required." rha:default="" rha:samble="userfoo"/>
+    </optional>
+    <optional>
+     <attribute name="gid" rha:description="This is an unprivileged group name,
+         as globally available to the system via /etc/group, including nis/ldap,
+         allowed to connect to corosync IPC. This value cannot be updated at runtime,
+         a full cman restart is required." rha:default="" rha:samble="groupfoo"/>
+    </optional>
+   </element>
+  </zeroOrMore>
+ </optional>
+<!-- end uidgid block -->
+
+<!-- totem block -->
+ <optional>
+  <element name="totem" rha:description="OpenAIS msg transport
+    protocol">
+   <optional>
+    <attribute name="consensus" rha:description="This is a timeout value
+        that specifies how many milliseconds to wait for consensus
+        to be achieved before starting a new round of membership
+        configuration." rha:default="200" rha:sample="235"/>
+   </optional>
+   <optional>
+    <attribute name="join" rha:description="This is a timeout value that
+        specifies how many milliseconds to wait for join messages in
+        the membership protocol." rha:default="100" rha:sample="95"/>
+   </optional>
+   <optional>
+    <attribute name="token" rha:description="This is a timeout value
+        that specifies how many milliseconds elapse before a
+        token loss is declared after not receiving a token. This
+        is the time spent detecting a failure of a processor in
+        the current configuration. Reforming a new configuration
+        takes about 50 milliseconds in addition to this
+        timeout." rha:default="5000" rha:sample="5300"/>
+   </optional>
+   <optional>
+    <attribute name="fail_recv_const" />
+   </optional>
+   <optional>
+    <attribute name="seqno_unchanged_const"
+      rha:description="Specifies how many rotations of the token without
+      any multicast traffic should occur before the merge detection timeout
+      is started." rha:default="30" rha:sample="5000"/>
+   </optional>
+   <optional>
+    <attribute name="netmtu"
+      rha:description="Specifies the network maximum transmit unit. To set
+      this value beyond 1500, the regular frame MTU, requires ethernet
+      devices that support large, or also called jumbo, frames. If any
+      device in the network does not support large frames, the protocol will
+      not operate properly.  The hosts must also have their mtu size set
+      from 1500 to whatever frame size is specified here."
+      rha:default="1500" rha:sample="9174"/>
+   </optional>
+   <optional>
+    <attribute name="window_size"
+       rha:description="Specifies the maximum number of messages that may
+       be sent on one token rotation. window_size should be no larger then
+       256000 / netmtu to avoid overflow of the kernel receive buffers."
+       rha:default="50" rha:sample="300"/>
+   </optional>
+   <optional>
+    <attribute name="max_messages"
+      rha:description="Specifies the maximum number of messages that may
+      be sent by one processor on receipt of the token. This parameter is
+      limited to 256000 / netmtu to  prevent  overflow of the kernel
+      transmit buffers" rha:default="17" rha:sample="25"/>
+   </optional>
+   <optional>
+    <attribute name="token_retransmits_before_loss_const"
+      rha:description="This value identifies how many token retransmits
+      should be attempted before forming a new configuration. If
+      this value is set, retransmit and hold will be automatically
+      calculated from retransmits_before_loss and token." rha:default="4"
+      rha:sample="5"/>
+   </optional>
+   <!-- FIXME: The following description was adapted from the man page.
+   It may be tool long for the schema document. Consider cutting text
+   after the second sentence and referring the reader to the openais.conf
+   man page. -->
+   <optional>
+    <attribute name="rrp_mode" rha:description="This attribute
+        specifies the redundant ring protocol mode. Its value can be
+        set to active, passive, or none. Active replication offers
+        slightly lower latency from transmit to delivery in faulty
+        network environments but with less performance. Passive
+        replication may nearly double the speed of the totem protocol
+        if the protocol doesn't become cpu bound. The final option is
+        none, in which case only one network interface is used to
+        operate the totem protocol. If only one interface directive is
+        specified, none is automatically chosen. If multiple interface
+        directives are specified, only active or passive may be
+        chosen." rha:sample="active"/>
+   </optional>
+   <optional>
+    <attribute name="rrp_problem_count_threshold"
+	rha:description="This specifies the number of times a problem is detected
+        with a link before setting the link faulty.  Once a link is set faulty, no
+        more data is transmitted upon it. Corosync default is 10, cman default is 3"
+        rha:default="3" rha:sample="5"/>
+   </optional>
+   <optional>
+    <attribute name="secauth" rha:description="This attribute specifies
+       that HMAC/SHA1 authentication should be used to authenticate all
+       messages. It further specifies that all data should be encrypted
+       with the sober128 encryption algorithm to protect data from
+       eavesdropping. For more information setting this value, refer
+       the the openais.conf man page." rha:default="on" rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="keyfile" rha:description="" rha:sample=""/>
+   </optional>
+   <!-- multicast address -->
+   <zeroOrMore>
+    <element name="interface" rha:description="Defines Totem interface options.  corosync.conf(5)" rha:sample="">
+     <optional>
+      <attribute name="ringnumber" rha:description="Sets the ring interface for the interface for RRP mode.  corosync.conf(5)" rha:sample=""/>
+     </optional>
+     <optional>
+      <attribute name="bindnetaddr" rha:description="Specifies the address to which the corosync executive should bind.  corosync.conf(5)" rha:sample=""/>
+     </optional>
+     <optional>
+      <attribute name="mcastaddr" rha:description="Defines the multicast address used by corosync for this interface.  corosync.conf(5)" rha:sample=""/>
+     </optional>
+     <optional>
+      <attribute name="mcastport" rha:description="Specifies the UDP port number when using multicast.  corosync.conf(5)" rha:sample=""/>
+     </optional>
+     <optional>
+      <attribute name="broadcast" rha:description="If set to yes, use broadcast instead of multicast for communication.  corosync.conf(5)" rha:sample=""/>
+     </optional>
+    </element>
+   </zeroOrMore>
+  </element>
+ </optional>
+<!-- end totem block -->
+
+<!-- quorumd block -->
+ <optional>
+  <element name="quorumd" rha:description="This element and its
+      attributes define parameters for the quorum disk daemon,
+      quorumd. qdisk(5).">
+   <optional>
+    <attribute name="interval" rha:description="The frequency of
+        read/write cycles, in seconds. qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="tko" rha:description="The number of cycles a node
+        must miss to be declared dead. qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="votes" rha:description="The number of votes the
+        quorum daemon advertises to CMAN when it has a high enough
+        score. qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="min_score" rha:description="The minimum score for a
+        node to be considered alive. If omitted or set to 0, the default
+        function, floor((n+1)/2), is used, where n is the sum of the
+        heuristics scores. The Minimum Score value must never exceed the
+        sum of the heuristic scores; otherwise, the quorum disk cannot
+        be available. qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="device" rha:description="The storage device the
+        quorum daemon uses. The device must be the same on all
+        nodes. qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="label" rha:description="Specifies the quorum disk
+        label created by the mkqdisk utility. If this field contains an
+        entry, the label overrides the Device field. If this field is
+        used, the quorum daemon reads /proc/partitions and checks for
+        qdisk signatures on every block device found, comparing the
+        label against the specified label. This is useful in configurations
+        where the quorum device name differs among nodes. qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="cman_label" rha:description="This is the name used by CMAN for the quorum device instead of the device name. qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="status_file" rha:description="Debugging file. qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="scheduler" rha:description="Scheduler. qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="reboot" rha:description="Reboot if our score drops too low.  qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="priority" rha:description="Scheduler priority. qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="tko_up" rha:description="Amount of positive changes before a host is considered online. qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="upgrade_wait" rha:description="Amount of cycles wait for conflicts for a bid for master status. qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="use_uptime" rha:description="Use /proc/uptime instead of gettimeofday(). qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="stop_cman" rha:description="Stop cman if the quorum disk cannot be found during startup. qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="paranoid" rha:description="Reboot if we are running too slowly.  qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="allow_kill" rha:description="Instruct cman to evict nodes which are not updating the quorum disk. qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="max_error_cycles" rha:description="Die after this many cycles which receive I/O errors.  qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="io_timeout" rha:description="Die if we cannot get a write out to disk after interval*tko.  qdisk(5)." rha:sample=""/>
+   </optional>
+   <optional>
+    <attribute name="master_wins" rha:description="Enable master-wins mode (two node clusters).  qdisk(5)." rha:sample=""/>
+   </optional>
+   <zeroOrMore>
+    <element name="heuristic" rha:description="Defines a heuristic. qdisk(5).">
+     <attribute name="program" rha:description="The program used to
+         determine if this heuristic is alive. This can be anything that
+         can be executed by /bin/sh -c. A return value of 0 indicates
+         success; anything else indicates failure." rha:sample=""/>
+     <optional>
+      <attribute name="score" rha:description="The weight of this
+          heuristic. Be careful when determining scores for
+          heuristics." rha:default="1" rha:sample=""/>
+     </optional>
+     <optional>
+      <attribute name="interval" rha:description="The frequency (in
+          seconds) at which the heuristic is polled.  qdisk(5)." rha:default="2"
+          rha:sample=""/>
+     </optional>
+     <optional>
+      <attribute name="tko" rha:description="The number of consecutive failures before a heuristic is discounted.  qdisk(5)." rha:sample=""/>
+     </optional>
+    </element>
+   </zeroOrMore>
+  </element>
+ </optional>
+<!-- end quorumd block -->
+
+<!-- fence_daemon block -->
+ <optional>
+  <element name="fence_daemon" rha:description="Configuration for fenced
+	daemon. fenced(8)">
+   <optional>
+    <attribute name="post_join_delay" rha:description="Number of seconds
+	the daemon will wait before fencing any victims after a node joins
+	the fence domain. fenced(8)"/>
+   </optional>
+   <optional>
+    <attribute name="post_fail_delay" rha:description="Number of seconds
+	the daemon will wait before fencing any victims after a node
+	fails. fenced(8)"/>
+   </optional>
+   <optional>
+    <attribute name="override_path" rha:description="Location of a FIFO
+	used for communication between fenced and fence_ack_manual.
+	fenced(8)"/>
+   </optional>
+   <optional>
+    <attribute name="override_time" rha:description="Number of seconds to
+	wait for a manual override after a failed fencing attempt before
+	the next attempt. fenced(8)"/>
+   </optional>
+   <optional>
+    <attribute name="clean_start" rha:description="Set to 1 to disable
+	startup fencing. fenced(8)"/>
+   </optional>
+
+   <optional>
+    <attribute name="skip_undefined" rha:description="Set to 1 to disable
+	startup fencing of nodes with no fence methods defined.
+	fenced(8)"/>
+   </optional>
+  </element>
+ </optional>
+<!-- end fence_daemon block -->
+
+<!-- fence_xvmd block -->
+ <optional>
+  <element name="fence_xvmd" rha:description="Fence_xvm daemon. The
+      fence_xvmd fence device is an I/O fencing host that resides
+      on dom0 and is used in conjunction with the fence_xvm fencing
+      agent. Together, these two programs fence Xen virtual machines
+      that are in a cluster. There is a requirement that the parent
+      dom0s are also a part of their own CMAN/OpenAIS based cluster,
+      and that the dom0 cluster does not share any members with the domU
+      cluster. Furthermore, the dom0 cluster is required to have fencing
+      if domU recovery is expected to be automatic.">
+    <optional>
+      <attribute name="debug" rha:description="" >
+	<data type="integer"/>
+      </attribute>
+    </optional>
+    <optional>
+      <attribute name="port" rha:description="" >
+	<data type="integer"/>
+      </attribute>
+    </optional>
+    <optional>
+      <attribute name="use_uuid" rha:description="" />
+    </optional>
+    <optional>
+      <attribute name="multicast_address" rha:description="" />
+    </optional>
+    <optional>
+      <attribute name="auth" rha:description="" />
+    </optional>
+    <optional>
+      <attribute name="hash" rha:description="" />
+    </optional>
+    <optional>
+      <attribute name="uri" rha:description="" />
+    </optional>
+    <optional>
+      <attribute name="key_file" rha:description="" />
+    </optional>
+    <optional>
+      <attribute name="multicast_interface" rha:description="" />
+    </optional>
+  </element>
+ </optional>
+<!-- end fence_xvmd block -->
+
+<!-- dlm block -->
+ <optional>
+ <element name="dlm" rha:description="Configuration for dlm and
+       dlm_controld daemon. dlm_controld(8)">
+
+  <optional>
+    <attribute name="log_debug" rha:description="Set to 1 to enable
+        dlm kernel debugging messages. dlm_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="timewarn" rha:description="Number of centiseconds
+       a lock is blocked before notifying dlm_controld deadlock code.
+       dlm_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="protocol" rha:description="The dlm lowcomms protocol.
+       dlm_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="enable_fencing" rha:description="Fencing recovery
+       dependency. dlm_controld(8)" />
+  </optional>
+
+  <optional>
+   <attribute name="enable_quorum" rha:description="Quorum recovery
+       dependency. dlm_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="enable_deadlk" rha:description="Deadlock detection
+       capability. dlm_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="enable_plock" rha:description="Cluster fs posix
+       lock capability. dlm_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="plock_debug" rha:description="Set to 1 to enable
+       posix lock debugging. dlm_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="plock_rate_limit" rha:description="Limit the rate of
+       plock operations. dlm_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="plock_ownership" rha:description="Set to 1/0 to
+       enable/disable plock ownership. dlm_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="drop_resources_time" rha:description="Plock ownership
+       drop resources time. dlm_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="drop_resources_count" rha:description="Plock ownership
+       drop resources count. dlm_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="drop_resources_age" rha:description="Plock ownership
+       drop resources age. dlm_controld(8)"/>
+  </optional>
+
+  <optional>
+   <zeroOrMore>
+    <element name="lockspace" rha:description="Individual lockspace
+      configuration. dlm_controld(8)">
+     <attribute name="name" rha:description="Name of the lockspace.
+         dlm_controld(8)"/>
+
+     <optional>
+      <attribute name="nodir" rha:description="Set to 1 to disable the
+          internal resource directory. dlm_controld(8)"/>
+     </optional>
+
+     <optional>
+      <zeroOrMore>
+       <element name="master" rha:description="Defines a master node.
+           dlm_controld(8)">
+
+        <attribute name="name" rha:description="The name of a node that
+            should be master resources/locks. dlm_controld(8)"/>
+
+        <optional>
+        <attribute name="weight" rha:description="The proportion of
+            resources this node should master. dlm_controld(8)"/>
+        </optional>
+       </element>
+      </zeroOrMore>
+     </optional>
+
+    </element>
+   </zeroOrMore>
+  </optional>
+ </element>
+ </optional>
+<!-- end dlm block -->
+
+<!-- gfs_controld block -->
+ <optional>
+ <element name="gfs_controld" rha:description="Configuration for
+       gfs_controld daemon. gfs_controld(8)">
+
+  <optional>
+   <attribute name="enable_withdraw" rha:description="Set to 1/0 to
+       enable/disable a response to a withdraw. gfs_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="enable_plock" rha:description="Cluster fs posix
+       lock capability. gfs_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="plock_debug" rha:description="Set to 1 to enable
+       posix lock debugging. gfs_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="plock_rate_limit" rha:description="Limit the rate of
+       plock operations. gfs_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="plock_ownership" rha:description="Set to 1/0 to
+       enable/disable plock ownership. gfs_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="drop_resources_time" rha:description="Plock ownership
+       drop resources time. gfs_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="drop_resources_count" rha:description="Plock ownership
+       drop resources count. gfs_controld(8)"/>
+  </optional>
+
+  <optional>
+   <attribute name="drop_resources_age" rha:description="Plock ownership
+       drop resources age. gfs_controld(8)"/>
+  </optional>
+
+ </element>
+ </optional>
+<!-- end gfs_controld block -->
+
+<!-- group block -->
+ <optional>
+ <element name="group" rha:description="Defines groupd configuration.
+     groupd(8)">
+  <optional>
+   <attribute name="groupd_compat" rha:description="Enable compatibility with
+     cluster2 nodes. groupd(8)"/>
+  </optional>
+ </element>
+ </optional>
+<!-- end group block -->
+
+<!-- logging block -->
+ <optional>
+  <element name="logging" rha:description="Defines global logging
+      configuration, and contains daemon-specific configuration.
+      cluster.conf(5)">
+
+   <optional>
+    <attribute name="to_syslog" rha:description="Set to yes/no to
+        enable/disable messages to syslog. cluster.conf(5)"/>
+   </optional>
+
+   <optional>
+    <attribute name="to_logfile" rha:description="Set to yes/no to
+        enable/disable messages to log file. cluster.conf(5)"/>
+   </optional>
+
+   <optional>
+    <attribute name="syslog_facility" rha:description="The facility
+        used for syslog messages. cluster.conf(5)"/>
+   </optional>
+
+   <optional>
+    <attribute name="syslog_priority" rha:description="Messages at this
+        level and higher are sent to syslog. cluster.conf(5)"/>
+   </optional>
+
+   <optional>
+    <attribute name="logfile_priority" rha:description="Messages at this
+        level and higher are written to log file. cluster.conf(5)"/>
+   </optional>
+
+   <optional>
+    <attribute name="logfile" rha:description="The log file path name.
+        cluster.conf(5)"/>
+   </optional>
+
+   <optional>
+    <attribute name="debug" rha:description="Set to on to enable debugging
+        messages in log file. cluster.conf(5)"/>
+   </optional>
+
+   <zeroOrMore>
+    <element name="logging_daemon" rha:description="Defines
+        daemon-specific logging configuration. cluster.conf(5)">
+
+     <attribute name="name" rha:description="The daemon name.
+         cluster.conf(5)"/>
+
+     <optional>
+      <attribute name="subsys" rha:description="A corosync subsystem name.
+          cluster.conf(5)"/>
+     </optional>
+
+     <optional>
+      <attribute name="to_syslog" rha:description="Same as global."/>
+     </optional>
+     <optional>
+      <attribute name="to_logfile" rha:description="Same as global."/>
+     </optional>
+     <optional>
+      <attribute name="syslog_facility" rha:description="Same as global."/>
+     </optional>
+     <optional>
+      <attribute name="syslog_priority" rha:description="Same as global."/>
+     </optional>
+     <optional>
+      <attribute name="logfile_priority" rha:description="Same as global."/>
+     </optional>
+     <optional>
+      <attribute name="logfile" rha:description="Same as global."/>
+     </optional>
+     <optional>
+      <attribute name="debug" rha:description="Same as global."/>
+     </optional>
+
+    </element>
+   </zeroOrMore>
+
+  </element>
+ </optional>
+<!-- end logging block -->
+
+<!-- clusternodes block -->
+ <element name="clusternodes" rha:description="Contains all cluster
+     node definitions. cluster.conf(5)">
+
+  <zeroOrMore>
+   <element name="clusternode" rha:description="Defines cluster node
+       properties, and contains other node specific configuration.
+       cluster.conf(5)">
+
+   <attribute name="name" rha:description="The hostname or IP address
+       of the node. cluster.conf(5)"/>
+
+   <attribute name="nodeid" rha:description="A unique integer to use
+       as a node identifier. cluster.conf(5)">
+    <data type="positiveInteger"/>
+   </attribute>
+
+   <optional>
+    <attribute name="votes" rha:description="The number of votes the
+        node contributes to quorum. cman(5)">
+     <data type="positiveInteger"/>
+    </attribute>
+   </optional>
+
+   <optional>
+    <attribute name="weight" rha:description="The dlm locking weight.
+        dlm_controld(8)"/>
+   </optional>
+
+   <interleave>
+    <optional>
+     <ref name="ALTNAME"/>
+    </optional>
+    <optional>
+     <ref name="FENCE"/>
+    </optional>
+    <optional>
+     <ref name="UNFENCE"/>
+    </optional>
+   </interleave>
+
+   </element>
+  </zeroOrMore>
+ </element>
+<!-- end clusternode block -->
+
+<!-- fencedevices block -->
+ <optional>
+ <element name="fencedevices" rha:description="Contains all fence
+     device definitions. fenced(8)">
+  <zeroOrMore>
+   <element name="fencedevice" rha:description="Defines fence device
+       properties. fenced(8)">
+
+     <attribute name="name" rha:description="A name that is used to
+         reference this fence device from clusternode fence section.
+         fenced(8)">
+      <data type="ID"/>
+     </attribute>
+
+     <attribute name="agent" rha:description="The fence agent to be
+         used. fenced(8)"/>
+
+     <ref name="FENCEDEVICEOPTIONS"/>
+
+    </element>
+  </zeroOrMore>
+ </element>
+ </optional>
+<!-- end fencedevices block -->
+
+<!-- rm block -->
+ <optional>
+  <element name="rm" rha:description="This element and its attributes
+      define resources (for example an IP address) required to create HA
+      cluster services, the HA cluster services themselves, and failover
+      domains for the HA cluster services.">
+   <optional>
+    <!-- FIXME: The following text needs clarifying. What is meant by
+    "...for all levels less than the selected."? -->
+    <attribute name="log_level" rha:description="An integer 0-7,
+        inclusive, for all levels less than the selected.
+        0, system is unusable, emergency;
+        1, action must be taken immediately;
+        2, critical conditions;
+        3, error conditions;
+        4, warning conditions;
+        5, normal but significant condition;
+        6, informational;
+        7, debug-level messages." rha:sample="6">
+     <data type="integer"/>
+    </attribute>
+   </optional>
+   <optional>
+    <attribute name="status_child_max" rha:description="Maximum number of status child threads." rha:sample="">
+     <data type="integer"/>
+    </attribute>
+   </optional>
+   <optional>
+    <attribute name="status_poll_interval" rha:description="Scan the resource tree every X seconds for resources which need to be checked."
+      rha:sample="">
+     <data type="integer"/>
+    </attribute>
+   </optional>
+   <optional>
+    <attribute name="transition_throttling" rha:description="During transitions, keep the event processor alive for this many seconds."
+      rha:sample="">
+     <data type="integer"/>
+    </attribute>
+   </optional>
+   <optional>
+    <attribute name="central_processing" rha:description="Enable central processing mode (requires cluster-wide shut down and restart of rgmanager.)."
+      rha:sample="">
+     <data type="integer"/>
+    </attribute>
+   </optional>
+   <optional>
+    <attribute name="log_facility" rha:description="The facility is one
+       of the following keywords: auth, authpriv, cron, daemon, kern,
+       lpr, mail, news, syslog, user, uucp and local0 through local7"/>
+   </optional>
+   <optional>
+    <attribute name="disabled" rha:description="Disables rgmanager entirely if set to 1.  Do not set unless you really mean it." rha:sample="">
+     <data type="integer"/>
+    </attribute>
+   </optional>
+   <interleave>
+   <optional>
+    <element name="failoverdomains" rha:description="Failover domain definitions.">
+     <zeroOrMore>
+      <element name="failoverdomain" rha:description="Specifies
+        properties of a specific failover domain">
+       <attribute name="name" rha:description="The name of the failover
+         domain." rha:sample="foo"/>
+       <optional>
+        <attribute name="ordered" rha:description="Set value to 1 if
+          the failover domain is ordered; set value to 0 if
+          unordered." rha:default="0" rha:sample="1"/>
+       </optional>
+       <optional>
+        <attribute name="restricted" rha:description="Set value to 1 if
+          the failover domain is restricted; set value to 0 if
+          unrestricted." rha:default="0" rha:sample="1"/>
+       </optional>
+       <optional>
+        <attribute name="nofailback" rha:description="Do not move service to a more preferred node if it is currently running." rha:sample=""/>
+       </optional>
+       <zeroOrMore>
+        <element name="failoverdomainnode" rha:description="A node in
+          a failover domain">
+         <optional>
+          <attribute name="priority" rha:description="A number
+            specifying the priority; lower numbers having higher
+            priority"
+              rha:sample="1"/>
+         </optional>
+         <attribute name="name" rha:description="Name of the node."
+             rha:sample="member2"/>
+        </element>
+       </zeroOrMore>
+      </element>
+     </zeroOrMore>
+    </element>
+   </optional>  <!-- End of failoverdomains block -->
+   <optional>
+    <element name="events" rha:description="Event definitions (central_processing only).">
+     <zeroOrMore>
+      <element name="event" rha:description="Defines an event.">
+       <attribute name="name" rha:description="Symbolic name for an event." rha:sample=""/>
+       <optional>
+        <text/>
+       </optional>
+       <optional>
+        <attribute name="file" rha:description="Path to S/Lang script to execute." rha:sample=""/>
+       </optional>
+       <optional>
+        <attribute name="priority" rha:description="Order (1..99) of event." rha:sample=""/>
+       </optional>
+       <optional>
+        <attribute name="class" rha:description="Event class (service, node)." rha:sample=""/>
+       </optional>
+       <!-- Service event class attributes -->
+       <optional>
+        <attribute name="service" rha:description="(Service) The service name (service:foo) must match the specified value in order for the event script to be run." rha:sample=""/>
+       </optional>
+       <optional>
+        <attribute name="service_state" rha:description="(Service) The service's state must match the specified value in order for the script to be run (started, stopped, disabled, failed)." rha:sample=""/>
+       </optional>
+       <optional>
+        <attribute name="service_owner" rha:description="(Service) The service owner must match the specified value in order for the event script to be run." rha:sample=""/>
+       </optional>
+       <!-- Node event -->
+       <optional>
+        <attribute name="node" rha:description="(Node) The node name must match the specified value in order for the script to be run." rha:sample=""/>
+       </optional>
+       <optional>
+        <attribute name="node_id" rha:description="(Node) The node ID must match the specified value in order for the script to be run." rha:sample=""/>
+       </optional>
+       <optional>
+        <attribute name="node_state" rha:description="(Node) The node state must match the specified value (0 or 1) in order for the script to be run." rha:sample=""/>
+       </optional>
+       <optional>
+        <attribute name="node_clean" rha:description="(Node) The node must have been fenced in order for the script to be run." rha:sample=""/>
+       </optional>
+       <optional>
+        <attribute name="node_local" rha:description="(Node) This script may only run on the current central processing node." rha:sample=""/>
+       </optional>
+       <!-- Config event attributes -->
+       <!-- NOT USED -->
+      </element>
+     </zeroOrMore>
+    </element>
+   </optional>  <!-- End of events block -->
+   <optional>
+    <element name="resources" rha:description="Defines global resources which may be referenced in services.  You may redefine actions for resources here, but child resource definitions are ignored in this section.">
+     <zeroOrMore>
+      <ref name="CHILDREN"/>
+     </zeroOrMore>
+    </element>
+   </optional>
+   <optional>
+    <element name="resource-defaults" rha:description="This section allows the administrator to change defaults for resource agents.  Overriding parameters which must be unique is not allowed.  Overriding a value which, by default, inherits a value from a parent resource will disable inheritance for that resource type.">
+     <zeroOrMore>
+      <ref name="CHILDREN"/>
+     </zeroOrMore>
+    </element>
+   </optional>
+   <zeroOrMore>
+    <ref name="SERVICE"/>
+   </zeroOrMore>
+   <zeroOrMore>
+    <ref name="VM"/>
+   </zeroOrMore>
+  </interleave>
+  </element>
+ </optional>
+
+<!-- clvmd block -->
+ <optional>
+   <element name="clvmd" rha:description="The clvmd element contains
+       attributes that define parameters for the cluster LVM daemon.">
+    <optional>
+     <attribute name="interface" rha:description="The interface attribute
+         tells clvmd which cluster interface it should use for internode
+         communications and locking. Valid values for this depend on
+         how the daemon is configured at compile-time, but are typically
+         cman, corosync or openais." rha:sample="cman"/>
+    </optional>
+   </element>
+ </optional>
+
+ </interleave>
+
+
+</element> <!-- cluster end -->
+</start>
+
+<!-- begin mcast definitions -->
+
+ <define name="MULTICASTOPTS">
+  <optional>
+   <attribute name="addr" rha:description="A multicast address specified
+    by a user. If you do specify a multicast address, you should
+    use the 239.192.x.x series that cman uses. Otherwise, using a
+    multicast address outside that range may cause unpredictable
+    results. For example, using 224.0.0.x (All hosts on the network)
+    may not be routed correctly, or even routed at all by some
+    hardware." rha:sample="239.192.0.1"/>
+  </optional>
+  <optional>
+   <attribute name="ttl" rha:description="Define the TTL (time to live) of
+    a multicast packets. Useful only if nodes are on different subnets and
+    a multicast router is available in between." rha:default="1"
+    rha:sample="24"/>
+  </optional>
+  <optional>
+   <attribute name="port">
+    <data type="nonNegativeInteger"/>
+   </attribute>
+  </optional>
+ </define>
+
+<!-- end mcast definitions -->
+
+<!-- begin node altname definitions -->
+
+ <define name="ALTNAME">
+    <element name="altname" rha:description="Defines a second network
+        interface to use for corosync redundant ring mode. cman(5)">
+
+     <attribute name="name" rha:description="A second hostname or IP
+        address of the node. cman(5)"/>
+
+     <optional>
+      <attribute name="port" rha:description="The network port to use
+          on the second interface. cman(5)"/>
+     </optional>
+
+     <optional>
+      <attribute name="mcast" rha:description="The multicast address
+          to use on the second interface. cman(5)"/>
+     </optional>
+
+     <optional>
+      <attribute name="ttl" rha:description="The multicast TTL 
+          to use on the second interface. cman(5)"/>
+     </optional>
+    </element>
+ </define>
+
+<!-- end node altname definitions -->
+
+<!-- begin node fence definitions -->
+
+ <define name="FENCE">
+  <element name="fence" rha:description="Contains methods for fencing
+      the node in different ways. fenced(8)">
+
+   <zeroOrMore>
+
+    <element name="method" rha:description="Contains one or more devices
+        for fencing the node a single way. fenced(8)">
+
+     <attribute name="name" rha:description="A name used to distinguish
+         multiple methods from each other. fenced(8)"/>
+
+     <zeroOrMore>
+       <ref name="DEVICE"/>
+     </zeroOrMore>
+
+    </element>
+
+   </zeroOrMore>
+  </element>
+ </define>
+
+ <define name="UNFENCE">
+  <element name="unfence" rha:description="Contains devices for unfencing
+      the node. fence_node(8)">
+   <zeroOrMore>
+    <ref name="DEVICE"/>
+   </zeroOrMore>
+  </element>
+ </define>
+
+ <define name="DEVICE">
+  <element name="device" rha:description="Defines the properties of a
+      device used for fencing or unfencing a node. fenced(8)">
+
+   <attribute name="name" rha:description="The name of a fencedevice
+       defined in the fencedevices section. fenced(8)">
+    <data type="IDREF"/>
+   </attribute>
+
+   <ref name="FENCEDEVICEOPTIONS"/>
+
+  </element>
+ </define>
+<!-- end node fence definitions -->

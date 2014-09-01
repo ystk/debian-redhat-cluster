@@ -24,11 +24,11 @@
 #include "libdlm.h"
 #include <linux/dlm_device.h>
 
-#define MISC_PREFIX		"/dev/misc/"
+#define DEV_PREFIX		"/dev/"
 #define DLM_PREFIX		"dlm_"
-#define DLM_MISC_PREFIX		MISC_PREFIX DLM_PREFIX
+#define DLM_MISC_PREFIX		DEV_PREFIX DLM_PREFIX
 #define DLM_CONTROL_NAME	"dlm-control"
-#define DLM_CONTROL_PATH	MISC_PREFIX DLM_CONTROL_NAME
+#define DLM_CONTROL_PATH	DEV_PREFIX DLM_CONTROL_NAME
 #define DEFAULT_LOCKSPACE	"default"
 
 /*
@@ -427,7 +427,7 @@ static int find_udev_device(const char *lockspace, int minor, char *udev_path)
 
 		/* look for a device with a truncated name */
 
-		d = opendir(MISC_PREFIX);
+		d = opendir(DEV_PREFIX);
 		while ((de = readdir(d))) {
 			if (de->d_name[0] == '.')
 				continue;
@@ -435,7 +435,7 @@ static int find_udev_device(const char *lockspace, int minor, char *udev_path)
 				continue;
 			if (strncmp(de->d_name, basename, MAX_SYSFS_NAME))
 				continue;
-			snprintf(tmp_path, PATH_MAX, MISC_PREFIX "%s",
+			snprintf(tmp_path, PATH_MAX, DEV_PREFIX "%s",
 				 de->d_name);
 			if (stat(tmp_path, &st))
 				continue;

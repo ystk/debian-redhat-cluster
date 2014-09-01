@@ -46,7 +46,7 @@ fod_get_node(int __attribute__((unused)) ccsfd, char *base, int idx, fod_t *doma
 {
 	fod_node_t *fodn;
 	char xpath[256];
-	char *ret;
+	char *ret = NULL;
 
 	snprintf(xpath, sizeof(xpath), "%s/failoverdomainnode[%d]/@name",
 		 base, idx);
@@ -64,8 +64,10 @@ fod_get_node(int __attribute__((unused)) ccsfd, char *base, int idx, fod_t *doma
 	} while (!list_done(&domain->fd_nodes, fodn));
 
 	fodn = malloc(sizeof(*fodn));
-	if (!fodn)
+	if (!fodn) {
+		free(ret);
 		return NULL;
+	}
 	memset(fodn, 0, sizeof(*fodn));
 
 	/* Already malloc'd; simply store */
@@ -82,6 +84,7 @@ fod_get_node(int __attribute__((unused)) ccsfd, char *base, int idx, fod_t *doma
  	} else {
  		/* 64-bit-ism on rhel4? */
  		fodn->fdn_nodeid = atoi(ret);
+		free(ret);
  	}
  
  	/* Don't even bother getting priority if we're not ordered (it's set
@@ -344,7 +347,7 @@ int
 node_domain_set(fod_t **domains, char *name, int **ret, int *retlen, int *flags)
 {
 	int x, i, j;
-	int *tmpset;
+	int *tmpset = NULL;
 	int ts_count;
 	fod_node_t *fodn;
 	fod_t *domain;
@@ -368,8 +371,10 @@ node_domain_set(fod_t **domains, char *name, int **ret, int *retlen, int *flags)
 	if (!(*ret))
 		return -1;
 	tmpset = malloc(sizeof(int) * x);
-	if (!(*tmpset))
+	if (!tmpset) {
+		free(*ret);
 		return -1;
+	}
 
 	*flags = domain->fd_flags;
 
@@ -404,8 +409,10 @@ node_domain_set(fod_t **domains, char *name, int **ret, int *retlen, int *flags)
 		}
 	}
 
-	if (!ts_count)
+	if (!ts_count) {
+		free(tmpset);
 		return 0;
+	}
 
 	/* Shuffle stuff at this prio level */
 	if (ts_count > 1)
@@ -413,6 +420,7 @@ node_domain_set(fod_t **domains, char *name, int **ret, int *retlen, int *flags)
 	for (j = 0; j < ts_count; j++)
 		s_add(*ret, retlen, tmpset[j]);
 
+	free(tmpset);
 	return 0;
 }
 
@@ -529,7 +537,7 @@ node_should_start(int nodeid, cluster_member_list_t *membership,
 		 * Check to see if the service is started and if we are the owner in case of
 		 * restricted+owner+no failback
 		 */
-		if (svc_state.rs_state == RG_STATE_STARTED)
+		if (svc_state.rs_state == RG_STATE_STARTED || svc_state.rs_state == RG_STATE_STARTING)
 			started = 1;
 		if (svc_state.rs_owner == (uint32_t)nodeid)
 			owned_by_node = 1;

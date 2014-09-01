@@ -84,6 +84,7 @@ struct commandline
 	int remove;
 	int force;
         int verbose;
+	int nostderr_debug;
         int nodeid;
 	int timeout;
 	unsigned int config_version;

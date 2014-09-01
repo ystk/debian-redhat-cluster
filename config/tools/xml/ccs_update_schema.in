@@ -1,0 +1,378 @@
+#!/bin/bash
+
+set +e
+export LC_ALL=C
+
+rngdir=@SHAREDIR@/relaxng
+rasdir=@SHAREDIR@
+fasdir=@SBINDIR@
+vardir=/var/lib/cluster
+force=""
+verbose=""
+
+print_usage() {
+	echo "Usage:"
+	echo ""
+	echo "ccs_update_schema [options]"
+	echo ""
+	echo "Options:"
+	echo "  -h               Print this help, then exit"
+	echo "  -V               Print program version information, then exit"
+	echo "  -v               Produce verbose output"
+	echo "  -f               Force schema regeneration and ignore cache"
+}
+
+lecho() {
+	[ -n "$verbose" ] && echo "$@"
+	return 0
+}
+
+check_opts() {
+	while [ "$1" != "--" ]; do
+		case $1 in
+		-h)
+			print_usage
+			exit 0
+		;;
+		-V)
+			echo "ccs_update_schema version @VERSION@"
+			exit 0
+		;;
+		-v)
+			verbose=1
+		;;
+		-f)
+			force=1
+		;;
+		esac
+		shift
+	done
+}
+
+opts=$(getopt hvVf $@)
+if [ "$?" != 0 ]; then
+	print_usage >&2
+	exit 1
+fi
+check_opts $opts
+
+tmpdir="$(mktemp -d -q)" || {
+	echo "unable to create tempdir" >&2
+	exit 1
+}
+export tmpdir
+
+# need to be careful (might have to mask traps on exit)
+cleanup() {
+	[ "$1" != "0" ] && rm -f $vardir/*.cache $vardir/*.hash
+	[ -n "$tmpdir" ] && [ -d "$tmpdir" ] && rm -rf "$tmpdir"
+	rm -f $vardir/rng_update.lock
+	exit $1
+}
+
+trap "cleanup 1" ABRT
+trap "cleanup 1" QUIT
+trap "cleanup 1" TERM
+trap "cleanup 1" INT
+trap "cleanup 1" ERR
+
+filter_file_list() {
+	filelist="$@"
+	for i in $filelist; do
+		[ "${i%\~}" != "${i}" ] && continue
+		[ "${i%,}" != "${i}" ] && continue
+		[ "${i%.orig}" != "${i}" ] && continue
+		[ "${i%.cfsaved}" != "${i}" ] && continue
+		[ "${i%.rpmsave}" != "${i}" ] && continue
+		[ "${i%.rpmorig}" != "${i}" ] && continue
+		[ "${i%.rpmnew}" != "${i}" ] && continue
+		[ "${i%.swp}" != "${i}" ] && continue
+		[ "${i%,v}" != "${i}" ] && continue
+		[ "${i%.dpkg-old}" != "${i}" ] && continue
+		[ "${i%.dpkg-dist}" != "${i}" ] && continue
+		[ "${i%.dpkg-new}" != "${i}" ] && continue
+		echo "$i"
+	done
+}
+
+filter_fence_list() {
+	filelist="$@"
+	for i in $faslist; do
+		[ "${i}" = "$fasdir/fence_legacy" ] && continue
+		[ "${i}" = "$fasdir/fence_node" ] && continue
+		[ "${i}" = "$fasdir/fence_nss_wrapper" ] && continue
+		[ "${i}" = "$fasdir/fence_pcmk" ] && continue
+		[ "${i}" = "$fasdir/fence_tool" ] && continue
+		[ "${i}" = "$fasdir/fence_vmware_helper" ] && continue
+		echo "$i"
+	done
+}
+
+generate_hash() {
+	outputfile="$1"
+	shift
+	filelist="$@"
+
+	if [ -n "$filelist" ]; then
+		md5sum $filelist > $outputfile
+		return $?
+	else
+		echo -n > $outputfile
+		return $?
+	fi
+}
+
+create_ras_stubs() {
+	lecho " ras: cannot find rng files. Creating stubs"
+	touch "$outputdir/resources.rng.hash"
+	cat > "$outputdir/resources.rng.cache" << EOF
+<!-- STUB resource-agents definitions -->
+<define name="SERVICE">
+ <element name="service" rha:description="Stub service">
+  <optional>
+   <ref name="CHILDREN"/>
+  </optional>
+ </element>
+</define>
+<define name="VM" >
+ <element name="vm" rha:description="Stub VM">
+  <optional>
+   <ref name="CHILDREN"/>
+  </optional>
+ </element>
+</define>
+<define name="CHILDREN">
+ <zeroOrMore>
+  <choice>
+   <ref name="SERVICE"/>
+   <ref name="VM"/>
+  </choice>
+ </zeroOrMore>
+</define>
+<!-- end STUB resource-agents definitions -->
+EOF
+}
+
+generate_ras() {
+	outputdir="$1"
+	raslist=""
+
+	lecho " ras: checking required files"
+
+	doras_stub=""
+	for i in ra2rng.xsl ra2ref.xsl \
+		 resources.rng.head resources.rng.mid resources.rng.tail; do
+		if [ ! -f "$rngdir/$i" ]; then
+			doras_stub=yes
+		fi
+	done
+
+	for i in service.sh vm.sh; do
+		if [ ! -x "$rasdir/$i" ]; then
+			doras_stub=yes
+		fi
+	done
+
+	[ "$doras_stub" = yes ] && create_ras_stubs && return 0
+
+	lecho " ras: looking for agents"
+
+	if [ -d "$rasdir" ]; then
+		raslist=$(find $rasdir \
+			-mindepth 1 -maxdepth 1 -type f -executable | sort -u)
+		raslist=$(filter_file_list $raslist)
+		# ordering is important apparently
+		[ -x $rasdir/service.sh ] && \
+			raslist="$rasdir/service.sh \
+			$(echo $raslist | sed -e 's#'$rasdir'/service.sh##g')"
+	fi
+
+	lecho " ras: generating hashes"
+
+	if ! generate_hash \
+		"$outputdir/resources.rng.hash" \
+		"$raslist $rngdir/ra2*.xsl $rngdir/resources.rng.* $0"; then
+		echo "Unable to generate resource agents hash" >&2
+		return 1
+	fi
+
+	if [ -z "$force" ] && \
+	   [ -f $vardir/resources.rng.hash ] && \
+	   [ -f $vardir/resources.rng.cache ] && \
+	   [ "$(cat $vardir/resources.rng.hash | md5sum -)" = \
+	     "$(cat "$outputdir/resources.rng.hash" | md5sum -)" ]; then
+		lecho " ras: using local cache"
+		cp $vardir/resources.rng.cache $outputdir/resources.rng.cache
+		return 0
+	fi
+
+	lecho " ras: generating rng data"
+
+	cat $rngdir/resources.rng.head > "$outputdir/resources.rng.cache"
+	lecho " ras: generating rng data"
+	for i in $raslist; do
+		lecho " ras: processing $(basename $i)"
+		$i meta-data 2>/dev/null | xsltproc $rngdir/ra2rng.xsl - >> \
+			"$outputdir/resources.rng.cache" 2>/dev/null
+	done
+	cat $rngdir/resources.rng.mid >> "$outputdir/resources.rng.cache"
+	lecho " ras: generating ref data"
+	for i in $raslist; do
+		lecho " ras: processing $(basename $i)"
+		$i meta-data 2>/dev/null | xsltproc $rngdir/ra2ref.xsl - >> \
+			"$outputdir/resources.rng.cache" 2>/dev/null
+	done
+	cat $rngdir/resources.rng.tail >> "$outputdir/resources.rng.cache"
+}
+
+create_fas_stubs() {
+	lecho " fas: cannot find rng files. Creating stubs"
+	touch "$outputdir/fence_agents.rng.hash"
+	cat > "$outputdir/fence_agents.rng.cache" << EOF
+<!-- STUB fence-agents definitions -->
+<define name="FENCEDEVICEOPTIONS">
+ <element name="service" rha:description="Stub fence device options">
+  <optional>
+   <ref name="STUBFENCEDEVICEOPTIONS"/>
+  </optional>
+ </element>
+</define>
+<define name="STUBFENCEDEVICEOPTIONS">
+ <zeroOrMore>
+  <choice>
+   <ref name="FENCEDEVICEOPTIONS"/>
+  </choice>
+ </zeroOrMore>
+</define>
+<!-- end STUB fence-agents definitions -->
+EOF
+}
+
+generate_fas() {
+	outputdir="$1"
+	faslist=""
+
+	lecho " fas: checking required files"
+
+	dofas_stub=""
+	for i in fence2rng.xsl fence.rng.head fence.rng.tail; do
+		if [ ! -f "$rngdir/$i" ]; then
+			dofas_stub=yes
+		fi
+	done
+
+	[ "$dofas_stub" = yes ] && create_fas_stubs && return 0
+
+	lecho " fas: looking for agents"
+
+	if [ -d "$fasdir" ]; then
+		faslist=$(ls -1 $fasdir/fence_*)
+		faslist=$(filter_file_list $faslist)
+		faslist=$(filter_fence_list $faslist)
+	fi
+
+	lecho " fas: generating hashes"
+
+	if ! generate_hash \
+		"$outputdir/fence_agents.rng.hash" \
+		"$faslist $rngdir/fence2*.xsl $rngdir/fence.rng.* $0"; then
+		echo "Unable to generate fence agents hash" >&2
+		return 1
+	fi
+
+	if [ -z "$force" ] && \
+	   [ -f $vardir/fence_agents.rng.hash ] && \
+	   [ -f $vardir/fence_agents.rng.cache ] && \
+	   [ "$(cat $vardir/fence_agents.rng.hash | md5sum -)" = \
+	     "$(cat "$outputdir/fence_agents.rng.hash" | md5sum -)" ]; then
+		lecho " fas: using local cache"
+		cp $vardir/fence_agents.rng.cache \
+			$outputdir/fence_agents.rng.cache
+		return 0
+	fi
+
+	lecho " fas: generating new cache"
+
+	cat $rngdir/fence.rng.head > "$outputdir/fence_agents.rng.cache"
+	for i in $faslist; do
+		lecho " fas: processing $(basename $i)"
+		$i -o metadata 2>/dev/null | \
+			xsltproc $rngdir/fence2rng.xsl - >> \
+			"$outputdir/fence_agents.rng.cache" 2>/dev/null
+		[ "$?" != 0 ] && \
+			echo "      <!-- No metadata for $i -->" >> \
+				"$outputdir/fence_agents.rng.cache"
+	done
+	cat $rngdir/fence.rng.tail >> "$outputdir/fence_agents.rng.cache"
+}
+
+build_schema() {
+	cat $rngdir/cluster.rng.in.head \
+	    $outputdir/resources.rng.cache \
+	    $outputdir/fence_agents.rng.cache \
+	    $rngdir/cluster.rng.in.tail \
+		> $outputdir/cluster.rng || {
+		echo "generic error linking relaxng schema" >&2
+		return 1
+	}
+
+	xmllint --noout $outputdir/cluster.rng || {
+		echo "generated schema does not pass xmllint validation" >&2
+		return 1
+	}
+
+	return 0
+}
+
+# NOTE
+# failure to delete cache and hash or failure to install them
+# is not fatal and will result in both being regenerated at the next run
+
+install_schema() {
+	mkdir -p $outputdir/backup || {
+		echo "Unable to create backup dir" >&2
+		return 1
+	}
+	cp -a $vardir/*rng* $outputdir/backup/ || {
+		echo "Unable to perform backup of current schema" >&2
+		return 1
+	}
+	rm -f $vardir/*.cache $vardir/*.hash
+	cp -f $outputdir/cluster.rng $vardir/ || {
+		cp -a $outputdir/backup/* $vardir/
+		echo "Failed to update relaxng ondisk data" >&2
+		return 1
+	}
+	cp $outputdir/*.cache $outputdir/*.hash $vardir/
+	return 0
+}
+
+(
+	flock --exclusive 200
+
+	lecho "Generating resource-agents cache"
+
+	generate_ras "$tmpdir" || {
+		echo "generic error creating resource agents relaxng schema" >&2
+		cleanup 1
+	}
+
+	lecho "Generating fence-agents cache"
+
+	generate_fas "$tmpdir" || {
+		echo "generic error creating fence agents relaxng schema" >&2
+		cleanup 1
+	}
+
+	lecho "Building final relaxng schema"
+
+	build_schema || cleanup 1
+
+	lecho "Installing schema in $vardir"
+
+	install_schema || cleanup 1
+
+	lecho "all done. have a nice day!"
+
+	cleanup 0
+) 200>$vardir/rng_update.lock

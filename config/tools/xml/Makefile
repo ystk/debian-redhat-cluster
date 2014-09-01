@@ -2,12 +2,14 @@ include ../../../make/defines.mk
 
 TARGET1 = ccs_config_dump
 TARGET2 = ccs_config_validate
-TARGET3 = cluster.rng
+TARGET3 = ccs_update_schema
+TARGET4 = cluster.rng
 
-SBINDIRT = $(TARGET1) $(TARGET2)
-SHAREDIRT = $(TARGET3)
+SBINDIRT = $(TARGET1) $(TARGET2) $(TARGET3)
+SHAREDIRSYMT = $(TARGET4)
+RELAXNGDIRT = cluster.rng.in.head cluster.rng.in.tail
 
-all: $(TARGET1) $(TARGET2) $(TARGET3)
+all: $(TARGET1) $(TARGET2) $(TARGET3) $(TARGET4)
 
 include $(OBJDIR)/make/cobj.mk
 include $(OBJDIR)/make/clean.mk
@@ -33,6 +35,13 @@ ${TARGET2}: $(S)/${TARGET2}.in
 	> $(TARGET2)
 
 ${TARGET3}: $(S)/${TARGET3}.in
-	cp $(S)/${TARGET3}.in ${TARGET3}
+	cat $(S)/$(TARGET3).in | sed \
+		-e 's#@SBINDIR@#${sbindir}#g' \
+		-e 's#@SHAREDIR@#${sharedir}#g' \
+		-e 's#@VERSION@#${RELEASE_VERSION}#g' \
+	> $(TARGET3)
+
+${TARGET4}:
+	ln -sf /var/lib/cluster/cluster.rng ${TARGET4}
 
 clean: generalclean

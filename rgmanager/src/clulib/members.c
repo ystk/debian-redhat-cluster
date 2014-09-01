@@ -282,14 +282,18 @@ get_member_list(cman_handle_t h)
 	}
 
 	do {	
+retry:
 		++tries;
-		if (nodes)
+		if (nodes) {
 			free(nodes);
+			nodes = NULL;
+		}
 
 		c = cman_get_node_count(h);
 		if (c <= 0) {
 			if (errno == EINTR)
-				continue;
+				/* continue if ml == NULL -> crash */
+				goto retry;
 			if (ml)
 				free(ml);
 			ml = NULL;

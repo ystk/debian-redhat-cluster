@@ -25,6 +25,12 @@ do { \
 } while (0)
 
 
+#define INT_TO_CHAR(x, str) \
+	if (str && atoi((const char *)str)) \
+		x = '*'; \
+	else \
+		x = ' ';
+
 struct option_info
 {
 	const char *name;
@@ -32,10 +38,27 @@ struct option_info
 	const char *votes;
 	const char *nodeid;
 	const char *mcast_addr;
+	const char *ip_addr;
 	const char *fence_type;
+	const char *autostart;
+	const char *exclusive;
+	const char *recovery;
+	const char *fs;
+	const char *domain;
+	const char *script;
+	const char *mountpoint;
+	const char *type;
+	const char *device;
+	const char *options;
 	const char *configfile;
 	const char *outputfile;
+	const char **failover_nodes;
 	int  do_delete;
+	int  force_fsck;
+	int  force_unmount;
+	int  self_fence;
+	int  ordered;
+	int  restricted;
 };
 
 static void config_usage(int rw)
@@ -121,6 +144,56 @@ static void delnode_usage(const char *name)
 	exit(0);
 }
 
+static void addscript_usage(const char *name)
+{
+	fprintf(stderr, "Usage: %s %s [options] <name> <path_to_script>\n",
+			prog_name, name);
+	config_usage(1);
+	help_usage();
+
+	exit(0);
+}
+
+static void addip_usage(const char *name)
+{
+	fprintf(stderr, "Usage: %s %s [options] <IP_address>\n",
+			prog_name, name);
+	config_usage(1);
+	help_usage();
+
+	exit(0);
+}
+
+static void addfs_usage(const char *name)
+{
+	fprintf(stderr, "Usage: %s %s [options] <name> <device> <mountpoint>\n",
+			prog_name, name);
+	fprintf(stderr, " -t --type          Type of the filesystem (ext3, ext4, etc.)\n");
+	fprintf(stderr, "                    Default type is ext3.\n");
+	fprintf(stderr, " -p --options       Mount options\n");
+	fprintf(stderr, " -k --force_fsck    Force fsck before mount\n");
+	fprintf(stderr, " -u --force_unmount Call umount with force flag\n");
+	fprintf(stderr, " -s --self_fence    Use 'self_fence' feature\n");
+	config_usage(1);
+	help_usage();
+
+	exit(0);
+}
+
+static void addfdomain_usage(const char *name)
+{
+	fprintf(stderr, "Usage: %s %s [options] <name> <node1> ... <nodeN>\n",
+			prog_name, name);
+	fprintf(stderr, " -p --ordered       Allows you to specify a preference order\n");
+	fprintf(stderr, "                    among the members of a failover domain\n");
+	fprintf(stderr, " -r --restricted    Allows you to restrict the members that can\n");
+	fprintf(stderr, "                    run a particular cluster service.\n");
+	config_usage(1);
+	help_usage();
+
+	exit(0);
+}
+
 static void addnodeid_usage(const char *name)
 {
 	fprintf(stderr, "Add node IDs to all nodes in the config file that don't have them.\n");
@@ -156,6 +229,22 @@ static void addnode_usage(const char *name)
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Add a new node and dump config file to stdout rather than save it\n");
 	fprintf(stderr, "  %s %s newnode2 -n 2 -f apc -o- newnode.temp.net port=1\n", prog_name, name);
+
+	exit(0);
+}
+
+static void addservice_usage(const char *name)
+{
+	fprintf(stderr, "Usage: %s %s [options] <servicename>\n", prog_name, name);
+	fprintf(stderr, " -a --autostart       Start the service on boot\n");
+	fprintf(stderr, " -d --domain          Failover domain for the service\n");
+	fprintf(stderr, " -x --exclusive       Do not run other services on the same server\n");
+	fprintf(stderr, " -r --recovery        Recovery policy\n");
+	fprintf(stderr, " -f --fs              Filesystem resource for the service\n");
+	fprintf(stderr, " -s --script          Script resource for the service\n");
+	fprintf(stderr, " -i --ip              IP address resource for the service\n");
+	config_usage(1);
+	help_usage();
 
 	exit(0);
 }
@@ -287,6 +376,13 @@ static void increment_version(xmlNode *root_element)
 	xmlSetProp(root_element, BAD_CAST "config_version", BAD_CAST newver);
 }
 
+static void _xmlSetIntProp(xmlNode *element, const char *property, const int value)
+{
+	char buf[32];
+	snprintf(buf, sizeof(buf), "%d", value);
+	xmlSetProp(element, BAD_CAST property, BAD_CAST buf);
+}
+
 static xmlNode *findnode(xmlNode *root, const char *name)
 {
 	xmlNode *cur_node;
@@ -378,19 +474,104 @@ static xmlNode *find_multicast_addr(xmlNode *clusternodes)
 	return NULL;
 }
 
-static xmlNode *find_node(xmlNode *clusternodes, const char *nodename)
+static xmlNode *do_find_node(xmlNode *root, const char *nodename,
+	const char *elem_name, const char *attrib_name)
 {
 	xmlNode *cur_node;
 
-	for (cur_node = clusternodes->children; cur_node; cur_node = cur_node->next)
+	for (cur_node = root->children; cur_node; cur_node = cur_node->next)
 	{
-		if (cur_node->type == XML_ELEMENT_NODE && strcmp((char *)cur_node->name, "clusternode") == 0)
+		if (cur_node->type == XML_ELEMENT_NODE &&
+			strcmp((char *)cur_node->name, elem_name) == 0)
 		{
-			xmlChar *name = xmlGetProp(cur_node, BAD_CAST "name");
-			if (strcmp((char *)name, nodename) == 0)
+			xmlChar *name = xmlGetProp(cur_node, BAD_CAST attrib_name);
+			if (name && strcmp((char *)name, nodename) == 0)
 				return cur_node;
 		}
 	}
+	return NULL;
+}
+
+static xmlNode *do_find_resource_ref(xmlNode *root, const char *name,
+		const char *res_type)
+{
+	xmlNode *cur_node;
+	xmlNode *res = NULL;
+
+	for (cur_node = root->children; cur_node; cur_node = cur_node->next)
+	{
+		if (cur_node->type == XML_ELEMENT_NODE &&
+			strcmp((char *)cur_node->name, "service") == 0)
+		{
+			res = do_find_node(cur_node, name, res_type, "ref");
+			if (res)
+				break;
+		}
+	}
+
+	return res;
+}
+
+static xmlNode *find_node(xmlNode *clusternodes, const char *nodename)
+{
+	return do_find_node(clusternodes, nodename, "clusternode", "name");
+}
+
+static xmlNode *find_service(xmlNode *root, const char *servicename)
+{
+	return do_find_node(root, servicename, "service", "name");
+}
+
+static xmlNode *find_fs_resource(xmlNode *root, const char *name)
+{
+	return do_find_node(root, name, "fs", "name");
+}
+
+static xmlNode *find_fdomain_resource(xmlNode *root, const char *name)
+{
+	return do_find_node(root, name, "failoverdomain", "name");
+}
+
+static xmlNode *find_script_resource(xmlNode *root, const char *name)
+{
+	return do_find_node(root, name, "script", "name");
+}
+
+static xmlNode *find_script_ref(xmlNode *root, const char *name)
+{
+	return do_find_resource_ref(root, name, "script");
+}
+
+static xmlNode *find_ip_resource(xmlNode *root, const char *name)
+{
+	return do_find_node(root, name, "ip", "address");
+}
+
+static xmlNode *find_ip_ref(xmlNode *root, const char *name)
+{
+	return do_find_resource_ref(root, name, "ip");
+}
+
+static xmlNode *find_fs_ref(xmlNode *root, const char *name)
+{
+	return do_find_resource_ref(root, name, "fs");
+}
+
+static xmlNode *find_fdomain_ref(xmlNode *root, const char *name)
+{
+	xmlNode *cur_node;
+
+	for (cur_node = root->children; cur_node; cur_node = cur_node->next)
+	{
+		if (cur_node->type == XML_ELEMENT_NODE &&
+			strcmp((char *)cur_node->name, "service") == 0)
+		{
+			xmlChar *domain = xmlGetProp(cur_node, BAD_CAST "domain");
+			if (domain && strcmp(name, (char *)domain) == 0)
+				return cur_node;
+		}
+	}
+
 	return NULL;
 }
 
@@ -518,6 +699,169 @@ static void add_clusternode(xmlNode *root_element, struct option_info *ninfo,
 	}
 }
 
+static void add_clusterservice(xmlNode *root_element, struct option_info *ninfo,
+			    int argc, char **argv, int optindex)
+{
+	xmlNode *rm;
+	xmlNode *rs;
+	xmlNode *fdomains;
+	xmlNode *newnode;
+
+	xmlNode *newfs = NULL;
+	xmlNode *newfsscript;
+	xmlNode *newfsip;
+
+	rm = findnode(root_element, "rm");
+	if (!rm)
+		die("Can't find \"rm\" in %s\n", ninfo->configfile);
+
+	/* Don't allow duplicate service names */
+	if (find_service(rm, ninfo->name))
+		die("service %s already exists in %s\n", ninfo->name,
+				ninfo->configfile);
+
+	rs = findnode(rm, "resources");
+	fdomains = findnode(rm, "failoverdomains");
+	if (ninfo->fs && (!rs || !find_fs_resource(rs, ninfo->fs)))
+		die("fs resource %s doesn't exist in %s\n", ninfo->fs,
+				ninfo->configfile);
+	if (ninfo->script && (!rs || !find_script_resource(rs, ninfo->script)))
+		die("script resource %s doesn't exist in %s\n", ninfo->script,
+				ninfo->configfile);
+	if (ninfo->ip_addr && (!rs || !find_ip_resource(rs, ninfo->ip_addr)))
+		die("ip resource %s doesn't exist in %s\n", ninfo->ip_addr,
+				ninfo->configfile);
+	if (ninfo->domain && (!fdomains || !find_fdomain_resource(fdomains, ninfo->domain)))
+		die("failover domain %s doesn't exist in %s\n", ninfo->domain,
+				ninfo->configfile);
+
+	/* Add the new service */
+	newnode = xmlNewNode(NULL, BAD_CAST "service");
+	xmlSetProp(newnode, BAD_CAST "name", BAD_CAST ninfo->name);
+	xmlSetProp(newnode, BAD_CAST "autostart", BAD_CAST ninfo->autostart);
+	if (ninfo->domain)
+		xmlSetProp(newnode, BAD_CAST "domain", BAD_CAST ninfo->domain);
+	if (ninfo->exclusive)
+		xmlSetProp(newnode, BAD_CAST "exclusive",
+				BAD_CAST ninfo->exclusive);
+	xmlSetProp(newnode, BAD_CAST "recovery", BAD_CAST ninfo->recovery);
+	xmlAddChild(rm, newnode);
+
+	/* Add the fs reference */
+	if (ninfo->fs)
+	{
+		newfs = xmlNewNode(NULL, BAD_CAST "fs");
+		xmlSetProp(newfs, BAD_CAST "ref", BAD_CAST ninfo->fs);
+		xmlAddChild(newnode, newfs);
+	}
+
+	/* Add the script reference */
+	if (ninfo->script)
+	{
+		newfsscript = xmlNewNode(NULL, BAD_CAST "script");
+		xmlSetProp(newfsscript, BAD_CAST "ref", BAD_CAST ninfo->script);
+		if (newfs)
+			xmlAddChild(newfs, newfsscript);
+		else
+			xmlAddChild(newnode, newfsscript);
+	}
+
+	/* Add the ip reference */
+	if (ninfo->ip_addr)
+	{
+		newfsip = xmlNewNode(NULL, BAD_CAST "ip");
+		xmlSetProp(newfsip, BAD_CAST "ref", BAD_CAST
+				ninfo->ip_addr);
+		if (newfs)
+			xmlAddChild(newfs, newfsip);
+		else
+			xmlAddChild(newnode, newfsip);
+	}
+}
+
+static void add_clusterfs(xmlNode *root_element, struct option_info *ninfo,
+			    int argc, char **argv, int optindex)
+{
+	xmlNode *rm;
+	xmlNode *rs;
+	xmlNode *node;
+
+	rm = findnode(root_element, "rm");
+	if (!rm)
+		die("Can't find \"rm\" in %s\n", ninfo->configfile);
+
+	rs = findnode(rm, "resources");
+	if (!rs)
+		die("Can't find \"resources\" %s\n", ninfo->configfile);
+
+	/* Check it doesn't already exist */
+	if (find_fs_resource(rs, ninfo->name))
+		die("fs %s already exists\n", ninfo->name);
+
+	/* Add the new fs resource */
+	node = xmlNewNode(NULL, BAD_CAST "fs");
+	xmlSetProp(node, BAD_CAST "device", BAD_CAST ninfo->device);
+	_xmlSetIntProp(node, "force_fsck", ninfo->force_fsck);
+	_xmlSetIntProp(node, "force_unmount", ninfo->force_unmount);
+	xmlSetProp(node, BAD_CAST "fstype", BAD_CAST ninfo->type);
+	xmlSetProp(node, BAD_CAST "mountpoint", BAD_CAST ninfo->mountpoint);
+	xmlSetProp(node, BAD_CAST "name", BAD_CAST ninfo->name);
+	xmlSetProp(node, BAD_CAST "options", (ninfo->options) ?
+					BAD_CAST ninfo->options : BAD_CAST "");
+	_xmlSetIntProp(node, "self_fence", ninfo->self_fence);
+	xmlAddChild(rs, node);
+}
+
+static void add_clusterfdomain(xmlNode *root_element, struct option_info *ninfo,
+			    int argc, char **argv, int optindex)
+{
+	xmlNode *rm;
+	xmlNode *fdomains;
+	xmlNode *node;
+	xmlNode *cn;
+	int i = 0;
+
+	rm = findnode(root_element, "rm");
+	if (!rm)
+		die("Can't find \"rm\" in %s\n", ninfo->configfile);
+
+	fdomains = findnode(rm, "failoverdomains");
+	if (!fdomains)
+		die("Can't find \"failoverdomains\" %s\n", ninfo->configfile);
+
+	cn = findnode(root_element, "clusternodes");
+	if (!cn)
+		die("Can't find \"clusternodes\" in %s\n", ninfo->configfile);
+
+	/* Check it doesn't already exist */
+	if (find_fdomain_resource(fdomains, ninfo->name))
+		die("failover domain %s already exists\n", ninfo->name);
+
+	/* Check that nodes are defined */
+	while (ninfo->failover_nodes[i]) {
+		if (!find_node(cn, ninfo->failover_nodes[i]))
+			die("Can't find node %s in %s.\n",
+				ninfo->failover_nodes[i], ninfo->configfile);
+		i++;
+	}
+
+	/* Add the new failover domain */
+	node = xmlNewNode(NULL, BAD_CAST "failoverdomain");
+	xmlSetProp(node, BAD_CAST "name", BAD_CAST ninfo->name);
+	_xmlSetIntProp(node, "ordered", ninfo->ordered);
+	_xmlSetIntProp(node, "restricted", ninfo->restricted);
+
+	i = 0;
+	while (ninfo->failover_nodes[i]) {
+		xmlNode *fnode = xmlNewNode(NULL, BAD_CAST "failoverdomainnode");
+		xmlSetProp(fnode, BAD_CAST "name", BAD_CAST ninfo->failover_nodes[i]);
+		_xmlSetIntProp(fnode, "priority", i + 1);
+		xmlAddChild(node, fnode);
+		i++;
+	}
+	xmlAddChild(fdomains, node);
+}
+
 static xmlDoc *open_configfile(struct option_info *ninfo)
 {
 	xmlDoc *doc;
@@ -562,6 +906,184 @@ static void del_clusternode(xmlNode *root_element, struct option_info *ninfo)
 	xmlUnlinkNode(oldnode);
 }
 
+static void del_clusterservice(xmlNode *root_element, struct option_info *ninfo)
+{
+	xmlNode *rm;
+	xmlNode *oldnode;
+
+	rm = findnode(root_element, "rm");
+	if (!rm)
+	{
+		fprintf(stderr, "Can't find \"rm\" in %s\n", ninfo->configfile);
+		exit(1);
+	}
+
+	oldnode = find_service(rm, ninfo->name);
+	if (!oldnode)
+	{
+		fprintf(stderr, "service %s does not exist in %s\n", ninfo->name, ninfo->configfile);
+		exit(1);
+	}
+
+	xmlUnlinkNode(oldnode);
+}
+
+static void del_clusterscript(xmlNode *root_element, struct option_info *ninfo)
+{
+	xmlNode *rm, *rs;
+	xmlNode *node;
+
+	rm = findnode(root_element, "rm");
+	if (!rm)
+	{
+		fprintf(stderr, "Can't find \"rm\" in %s\n", ninfo->configfile);
+		exit(1);
+	}
+
+	rs = findnode(rm, "resources");
+	if (!rs)
+	{
+		fprintf(stderr, "Can't find \"resources\" in %s\n", ninfo->configfile);
+		exit(1);
+	}
+
+	/* Check that not used */
+	node = find_script_ref(rm, ninfo->name);
+	if (node)
+	{
+		fprintf(stderr, "Script %s is referenced in service in %s,"
+			" please remove reference first.\n", ninfo->name,
+			ninfo->configfile);
+		exit(1);
+	}
+
+	node = find_script_resource(rs, ninfo->name);
+	if (!node)
+	{
+		fprintf(stderr, "Script %s does not exist in %s\n", ninfo->name, ninfo->configfile);
+		exit(1);
+	}
+
+	xmlUnlinkNode(node);
+}
+
+static void del_clusterip(xmlNode *root_element, struct option_info *ninfo)
+{
+	xmlNode *rm, *rs;
+	xmlNode *node;
+
+	rm = findnode(root_element, "rm");
+	if (!rm)
+	{
+		fprintf(stderr, "Can't find \"rm\" in %s\n", ninfo->configfile);
+		exit(1);
+	}
+
+	rs = findnode(rm, "resources");
+	if (!rs)
+	{
+		fprintf(stderr, "Can't find \"resources\" in %s\n", ninfo->configfile);
+		exit(1);
+	}
+
+	/* Check that not used */
+	node = find_ip_ref(rm, ninfo->name);
+	if (node)
+	{
+		fprintf(stderr, "IP %s is referenced in service in %s,"
+			" please remove reference first.\n", ninfo->name,
+			ninfo->configfile);
+		exit(1);
+	}
+
+	node = find_ip_resource(rs, ninfo->name);
+	if (!node)
+	{
+		fprintf(stderr, "IP %s does not exist in %s\n", ninfo->name, ninfo->configfile);
+		exit(1);
+	}
+
+	xmlUnlinkNode(node);
+}
+
+static void del_clusterfs(xmlNode *root_element, struct option_info *ninfo)
+{
+	xmlNode *rm, *rs;
+	xmlNode *node;
+
+	rm = findnode(root_element, "rm");
+	if (!rm)
+	{
+		fprintf(stderr, "Can't find \"rm\" in %s\n", ninfo->configfile);
+		exit(1);
+	}
+
+	rs = findnode(rm, "resources");
+	if (!rs)
+	{
+		fprintf(stderr, "Can't find \"resources\" in %s\n", ninfo->configfile);
+		exit(1);
+	}
+
+	/* Check that not used */
+	node = find_fs_ref(rm, ninfo->name);
+	if (node)
+	{
+		fprintf(stderr, "fs %s is referenced in service in %s,"
+			" please remove reference first.\n", ninfo->name,
+			ninfo->configfile);
+		exit(1);
+	}
+
+	node = find_fs_resource(rs, ninfo->name);
+	if (!node)
+	{
+		fprintf(stderr, "fs %s does not exist in %s\n", ninfo->name, ninfo->configfile);
+		exit(1);
+	}
+
+	xmlUnlinkNode(node);
+}
+
+static void del_clusterfdomain(xmlNode *root_element, struct option_info *ninfo)
+{
+	xmlNode *rm, *fdomains;
+	xmlNode *node;
+
+	rm = findnode(root_element, "rm");
+	if (!rm)
+	{
+		fprintf(stderr, "Can't find \"rm\" in %s\n", ninfo->configfile);
+		exit(1);
+	}
+
+	fdomains = findnode(rm, "failoverdomains");
+	if (!fdomains)
+	{
+		fprintf(stderr, "Can't find \"failoverdomains\" in %s\n", ninfo->configfile);
+		exit(1);
+	}
+
+	/* Check that not used */
+	node = find_fdomain_ref(rm, ninfo->name);
+	if (node)
+	{
+		fprintf(stderr, "failover domain %s is referenced in service in %s,"
+			" please remove reference first.\n", ninfo->name,
+			ninfo->configfile);
+		exit(1);
+	}
+
+	node = find_fdomain_resource(fdomains, ninfo->name);
+	if (!node)
+	{
+		fprintf(stderr, "failover domain %s does not exist in %s\n", ninfo->name, ninfo->configfile);
+		exit(1);
+	}
+
+	xmlUnlinkNode(node);
+}
+
 struct option addnode_options[] =
 {
       { "votes", required_argument, NULL, 'v'},
@@ -573,14 +1095,28 @@ struct option addnode_options[] =
       { NULL, 0, NULL, 0 },
 };
 
-struct option delnode_options[] =
+struct option addfs_options[] =
 {
+      { "type", required_argument, NULL, 't'},
+      { "options", required_argument, NULL, 'p'},
       { "outputfile", required_argument, NULL, 'o'},
       { "configfile", required_argument, NULL, 'c'},
+      { "force_fsck", no_argument, NULL, 'k'},
+      { "force_unmount", no_argument, NULL, 'u'},
+      { "self_fence", no_argument, NULL, 's'},
       { NULL, 0, NULL, 0 },
 };
 
-struct option addfence_options[] =
+struct option addfdomain_options[] =
+{
+      { "outputfile", required_argument, NULL, 'o'},
+      { "configfile", required_argument, NULL, 'c'},
+      { "ordered", no_argument, NULL, 'p'},
+      { "restricted", no_argument, NULL, 'r'},
+      { NULL, 0, NULL, 0 },
+};
+
+struct option commonw_options[] =
 {
       { "outputfile", required_argument, NULL, 'o'},
       { "configfile", required_argument, NULL, 'c'},
@@ -613,6 +1149,46 @@ struct option create_options[] =
       { NULL, 0, NULL, 0 },
 };
 
+struct option addservice_options[] =
+{
+      { "autostart", required_argument, NULL, 'a'},
+      { "domain", required_argument, NULL, 'd'},
+      { "exclusive", required_argument, NULL, 'x'},
+      { "recovery", required_argument, NULL, 'r'},
+      { "fs", required_argument, NULL, 'f'},
+      { "script", required_argument, NULL, 's'},
+      { "ip", required_argument, NULL, 'i'},
+      { "outputfile", required_argument, NULL, 'o'},
+      { "configfile", required_argument, NULL, 'c'},
+      { NULL, 0, NULL, 0 },
+};
+
+static int parse_commonw_options(int argc, char **argv,
+	struct option_info *ninfo)
+{
+	int opt;
+
+	memset(ninfo, 0, sizeof(*ninfo));
+
+	while ( (opt = getopt_long(argc, argv, "o:c:h?", commonw_options, NULL)) != EOF)
+	{
+		switch(opt)
+		{
+		case 'c':
+			ninfo->configfile = strdup(optarg);
+			break;
+
+		case 'o':
+			ninfo->outputfile = strdup(optarg);
+			break;
+
+		case '?':
+		default:
+			return 1;
+		}
+	}
+	return 0;
+}
 
 static int next_nodeid(int startid, int *nodeids, int nodecount)
 {
@@ -783,7 +1359,7 @@ void add_node(int argc, char **argv)
 	memset(&ninfo, 0, sizeof(ninfo));
 	ninfo.votes = "1";
 
-	while ( (opt = getopt_long(argc, argv, "v:n:a:f:o:c:CFh?", addnode_options, NULL)) != EOF)
+	while ( (opt = getopt_long(argc, argv, "v:n:a:f:o:c:h?", addnode_options, NULL)) != EOF)
 	{
 		switch(opt)
 		{
@@ -843,29 +1419,11 @@ void add_node(int argc, char **argv)
 void del_node(int argc, char **argv)
 {
 	struct option_info ninfo;
-	int opt;
 	xmlDoc *doc;
 	xmlNode *root_element;
 
-	memset(&ninfo, 0, sizeof(ninfo));
-
-	while ( (opt = getopt_long(argc, argv, "o:c:CFh?", delnode_options, NULL)) != EOF)
-	{
-		switch(opt)
-		{
-		case 'c':
-			ninfo.configfile = strdup(optarg);
-			break;
-
-		case 'o':
-			ninfo.outputfile = strdup(optarg);
-			break;
-
-		case '?':
-		default:
-			delnode_usage(argv[0]);
-		}
-	}
+	if (parse_commonw_options(argc, argv, &ninfo))
+		delnode_usage(argv[0]);
 
 	/* Get node name parameter */
 	if (optind < argc)
@@ -879,7 +1437,18 @@ void del_node(int argc, char **argv)
 
 	increment_version(root_element);
 
-	del_clusternode(root_element, &ninfo);
+	if (!strcmp(argv[0], "delnode"))
+		del_clusternode(root_element, &ninfo);
+	else if (!strcmp(argv[0], "delservice"))
+		del_clusterservice(root_element, &ninfo);
+	else if (!strcmp(argv[0], "delscript"))
+		del_clusterscript(root_element, &ninfo);
+	else if (!strcmp(argv[0], "delip"))
+		del_clusterip(root_element, &ninfo);
+	else if (!strcmp(argv[0], "delfs"))
+		del_clusterfs(root_element, &ninfo);
+	else if (!strcmp(argv[0], "delfdomain"))
+		del_clusterfdomain(root_element, &ninfo);
 
 	/* Write it out */
 	save_file(doc, &ninfo);
@@ -966,6 +1535,378 @@ void list_nodes(int argc, char **argv)
 	}
 }
 
+void add_service(int argc, char **argv)
+{
+	struct option_info ninfo;
+	int opt;
+	xmlDoc *doc;
+	xmlNode *root_element;
+
+	memset(&ninfo, 0, sizeof(ninfo));
+	ninfo.autostart = "1";
+	ninfo.recovery = "relocate";
+
+	while ( (opt = getopt_long(argc, argv, "a:d:x:r:f:o:c:s:i:h?", addservice_options, NULL)) != EOF)
+	{
+		switch(opt)
+		{
+		case 'a':
+			validate_int_arg(opt, optarg);
+			ninfo.autostart = optarg;
+			break;
+
+		case 'd':
+			ninfo.domain = strdup(optarg);
+			break;
+
+		case 'x':
+			validate_int_arg(opt, optarg);
+			ninfo.exclusive = optarg;
+			break;
+
+		case 'r':
+			ninfo.recovery = strdup(optarg);
+			break;
+
+		case 'f':
+			ninfo.fs = strdup(optarg);
+			break;
+
+		case 's':
+			ninfo.script = strdup(optarg);
+			break;
+
+		case 'i':
+			ninfo.ip_addr = strdup(optarg);
+			break;
+
+		case 'c':
+			ninfo.configfile = strdup(optarg);
+			break;
+
+		case 'o':
+			ninfo.outputfile = strdup(optarg);
+			break;
+
+		case '?':
+		default:
+			addservice_usage(argv[0]);
+		}
+	}
+
+	/* Get service name parameter */
+	if (optind < argc)
+		ninfo.name = strdup(argv[optind]);
+	else
+		addservice_usage(argv[0]);
+
+
+	doc = open_configfile(&ninfo);
+
+	root_element = xmlDocGetRootElement(doc);
+
+	increment_version(root_element);
+
+	add_clusterservice(root_element, &ninfo, argc, argv, optind);
+
+	/* Write it out */
+	save_file(doc, &ninfo);
+	/* Shutdown libxml */
+	xmlCleanupParser();
+
+}
+
+void list_services(int argc, char **argv)
+{
+	xmlNode *cur_service;
+	xmlNode *root_element;
+	xmlNode *rm;
+	xmlDocPtr doc;
+	struct option_info ninfo;
+	int opt;
+	int verbose = 0;
+
+	memset(&ninfo, 0, sizeof(ninfo));
+
+	while ( (opt = getopt_long(argc, argv, "c:vh?", list_options, NULL)) != EOF)
+	{
+		switch(opt)
+		{
+		case 'c':
+			ninfo.configfile = strdup(optarg);
+			break;
+		case 'v':
+			verbose++;
+			break;
+		case '?':
+		default:
+			list_usage(argv[0]);
+		}
+	}
+	doc = open_configfile(&ninfo);
+
+	root_element = xmlDocGetRootElement(doc);
+
+
+	printf("\nCluster name: %s, config_version: %s\n\n",
+	       (char *)cluster_name(root_element),
+	       (char *)find_version(root_element));
+
+	rm = findnode(root_element, "rm");
+	if (!rm)
+		die("Can't find \"rm\" in %s\n", ninfo.configfile);
+
+	printf("Name                             Autostart Exclusive Recovery\n");
+	for (cur_service = rm->children; cur_service;
+			cur_service = cur_service->next)
+	{
+		xmlChar *name, *autostart, *exclusive, *recovery;
+
+		if (!cur_service->type == XML_ELEMENT_NODE ||
+			strcmp((char *)cur_service->name, "service") != 0)
+			continue;
+
+		name = xmlGetProp(cur_service, BAD_CAST "name");
+		autostart = xmlGetProp(cur_service, BAD_CAST "autostart");
+		exclusive = xmlGetProp(cur_service, BAD_CAST "exclusive");
+		recovery = xmlGetProp(cur_service, BAD_CAST "recovery");
+
+		if (!autostart)
+			autostart = (unsigned char *)"0";
+		if (!exclusive)
+			exclusive = (unsigned char *)"0";
+		if (!recovery)
+			recovery = (unsigned char *)"-";
+
+		printf("%-32s       %3d       %3d %s\n", name,
+			atoi((char *)autostart), atoi((char *)exclusive),
+			(char *)recovery);
+	}
+}
+
+void add_script(int argc, char **argv)
+{
+	struct option_info ninfo;
+	xmlDoc *doc;
+	xmlNode *root_element;
+	xmlNode *rm, *rs, *node;
+	char *name;
+	char *sc_file;
+
+	if (parse_commonw_options(argc, argv, &ninfo))
+		addscript_usage(argv[0]);
+
+	if (argc - optind < 2)
+		addscript_usage(argv[0]);
+
+	doc = open_configfile(&ninfo);
+
+	root_element = xmlDocGetRootElement(doc);
+
+	increment_version(root_element);
+
+	rm = findnode(root_element, "rm");
+	if (!rm)
+		die("Can't find \"rm\" %s\n", ninfo.configfile);
+
+	rs = findnode(rm, "resources");
+	if (!rs)
+		die("Can't find \"resources\" %s\n", ninfo.configfile);
+
+	/* First param is the script name - check it doesn't already exist */
+	name = argv[optind++];
+	if (find_script_resource(rs, name))
+		die("Script %s already exists\n", name);
+	sc_file = argv[optind++];
+
+	/* Add it */
+	node = xmlNewNode(NULL, BAD_CAST "script");
+	xmlSetProp(node, BAD_CAST "file", BAD_CAST sc_file);
+	xmlSetProp(node, BAD_CAST "name", BAD_CAST name);
+	xmlAddChild(rs, node);
+
+	/* Write it out */
+	save_file(doc, &ninfo);
+
+	/* Shutdown libxml */
+	xmlCleanupParser();
+}
+
+void add_ip(int argc, char **argv)
+{
+	struct option_info ninfo;
+	xmlDoc *doc;
+	xmlNode *root_element;
+	xmlNode *rm, *rs, *node;
+
+	if (parse_commonw_options(argc, argv, &ninfo))
+		addip_usage(argv[0]);
+
+	if (optind < argc)
+		ninfo.ip_addr = strdup(argv[optind]);
+	else
+		addip_usage(argv[0]);
+
+	doc = open_configfile(&ninfo);
+
+	root_element = xmlDocGetRootElement(doc);
+
+	increment_version(root_element);
+
+	rm = findnode(root_element, "rm");
+	if (!rm)
+		die("Can't find \"rm\" %s\n", ninfo.configfile);
+
+	rs = findnode(rm, "resources");
+	if (!rs)
+		die("Can't find \"resources\" %s\n", ninfo.configfile);
+
+	/* Check it doesn't already exist */
+	if (find_ip_resource(rs, ninfo.ip_addr))
+		die("IP %s already exists\n", ninfo.ip_addr);
+
+	/* Add it */
+	node = xmlNewNode(NULL, BAD_CAST "ip");
+	xmlSetProp(node, BAD_CAST "address", BAD_CAST ninfo.ip_addr);
+	xmlSetProp(node, BAD_CAST "monitor_link", BAD_CAST "1");
+	xmlAddChild(rs, node);
+
+	/* Write it out */
+	save_file(doc, &ninfo);
+
+	/* Shutdown libxml */
+	xmlCleanupParser();
+}
+
+void add_fs(int argc, char **argv)
+{
+	struct option_info ninfo;
+	xmlDoc *doc;
+	xmlNode *root_element;
+	int opt;
+
+	memset(&ninfo, 0, sizeof(ninfo));
+
+	while ( (opt = getopt_long(argc, argv, "t:p:o:c:h?kus", addfs_options, NULL)) != EOF)
+	{
+		switch(opt)
+		{
+		case 't':
+			ninfo.type = strdup(optarg);
+			break;
+
+		case 'p':
+			ninfo.options = strdup(optarg);
+			break;
+
+		case 'c':
+			ninfo.configfile = strdup(optarg);
+			break;
+
+		case 'o':
+			ninfo.outputfile = strdup(optarg);
+			break;
+
+		case 'k':
+			ninfo.force_fsck = 1;
+			break;
+
+		case 'u':
+			ninfo.force_unmount = 1;
+			break;
+
+		case 's':
+			ninfo.self_fence = 1;
+			break;
+
+		case '?':
+		default:
+			addfs_usage(argv[0]);
+		}
+	}
+
+	if (optind < argc - 2) {
+		ninfo.name = strdup(argv[optind]);
+		ninfo.device = strdup(argv[optind + 1]);
+		ninfo.mountpoint = strdup(argv[optind + 2]);
+	} else
+		addfs_usage(argv[0]);
+
+	if (!ninfo.type)
+		ninfo.type = "ext3";
+
+	doc = open_configfile(&ninfo);
+
+	root_element = xmlDocGetRootElement(doc);
+
+	increment_version(root_element);
+
+	add_clusterfs(root_element, &ninfo, argc, argv, optind);
+
+	/* Write it out */
+	save_file(doc, &ninfo);
+	/* Shutdown libxml */
+	xmlCleanupParser();
+}
+
+void add_fdomain(int argc, char **argv)
+{
+	struct option_info ninfo;
+	xmlDoc *doc;
+	xmlNode *root_element;
+	int opt, i;
+
+	memset(&ninfo, 0, sizeof(ninfo));
+
+	while ( (opt = getopt_long(argc, argv, "pro:c:h?", addfdomain_options, NULL)) != EOF)
+	{
+		switch(opt)
+		{
+		case 'p':
+			ninfo.ordered = 1;
+			break;
+
+		case 'r':
+			ninfo.restricted = 1;
+			break;
+
+		case 'c':
+			ninfo.configfile = strdup(optarg);
+			break;
+
+		case 'o':
+			ninfo.outputfile = strdup(optarg);
+			break;
+
+		case '?':
+		default:
+			addfdomain_usage(argv[0]);
+		}
+	}
+
+	if (optind < argc - 1) {
+		ninfo.name = strdup(argv[optind]);
+		ninfo.failover_nodes = (const char **)malloc(sizeof(char *) * (argc - optind));
+		for (i = 0; i < argc - optind - 1; i++)
+			ninfo.failover_nodes[i] = strdup(argv[i + optind + 1]);
+		ninfo.failover_nodes[i] = NULL;
+	} else
+		addfdomain_usage(argv[0]);
+
+	doc = open_configfile(&ninfo);
+
+	root_element = xmlDocGetRootElement(doc);
+
+	increment_version(root_element);
+
+	add_clusterfdomain(root_element, &ninfo, argc, argv, optind);
+
+	/* Write it out */
+	save_file(doc, &ninfo);
+	/* Shutdown libxml */
+	xmlCleanupParser();
+}
+
 void create_skeleton(int argc, char **argv)
 {
 	char *fencename = NULL;
@@ -1031,7 +1972,7 @@ void create_skeleton(int argc, char **argv)
 	}
 
 	fprintf(outfile, "  <clusternodes>\n");
-	for (i=1; i< numnodes; i++) {
+	for (i=1; i <= numnodes; i++) {
 		fprintf(outfile, "    <clusternode name=\"NEEDNAME-%02d\" votes=\"1\" nodeid=\"%d\">\n", i, i);
 		fprintf(outfile, "      <fence>\n");
 		fprintf(outfile, "        <method name=\"single\">\n");
@@ -1068,26 +2009,9 @@ void add_fence(int argc, char **argv)
 	char *fencename;
 	char *agentname;
 	struct option_info ninfo;
-	int opt;
 
-	memset(&ninfo, 0, sizeof(ninfo));
-
-	while ( (opt = getopt_long(argc, argv, "c:o:CFh?", list_options, NULL)) != EOF)
-	{
-		switch(opt)
-		{
-		case 'c':
-			ninfo.configfile = strdup(optarg);
-			break;
-		case 'o':
-			ninfo.outputfile = strdup(optarg);
-			break;
-
-		case '?':
-		default:
-			addfence_usage(argv[0]);
-		}
-	}
+	if (parse_commonw_options(argc, argv, &ninfo))
+		addfence_usage(argv[0]);
 
 	if (argc - optind < 2)
 		addfence_usage(argv[0]);
@@ -1130,26 +2054,9 @@ void del_fence(int argc, char **argv)
 	xmlDocPtr doc;
 	char *fencename;
 	struct option_info ninfo;
-	int opt;
 
-	memset(&ninfo, 0, sizeof(ninfo));
-
-	while ( (opt = getopt_long(argc, argv, "c:o:CFhv?", list_options, NULL)) != EOF)
-	{
-		switch(opt)
-		{
-		case 'c':
-			ninfo.configfile = strdup(optarg);
-			break;
-		case 'o':
-			ninfo.outputfile = strdup(optarg);
-			break;
-
-		case '?':
-		default:
-			delfence_usage(argv[0]);
-		}
-	}
+	if (parse_commonw_options(argc, argv, &ninfo))
+		delfence_usage(argv[0]);
 
 	if (argc - optind < 1)
 		delfence_usage(argv[0]);
@@ -1223,3 +2130,240 @@ void list_fences(int argc, char **argv)
 	}
 }
 
+void list_scripts(int argc, char **argv)
+{
+	xmlNode *cur_node;
+	xmlNode *root_element;
+	xmlNode *rm, *rs;
+	xmlDocPtr doc;
+	struct option_info ninfo;
+	int opt;
+	int verbose=0;
+
+	memset(&ninfo, 0, sizeof(ninfo));
+
+	while ( (opt = getopt_long(argc, argv, "c:hv?", list_options, NULL)) != EOF)
+	{
+		switch(opt)
+		{
+		case 'c':
+			ninfo.configfile = strdup(optarg);
+			break;
+		case 'v':
+			verbose++;
+			break;
+		case '?':
+		default:
+			list_usage(argv[0]);
+		}
+	}
+	doc = open_configfile(&ninfo);
+	root_element = xmlDocGetRootElement(doc);
+
+	rm = findnode(root_element, "rm");
+	if (!rm)
+		die("Can't find \"rm\" in %s\n", ninfo.configfile);
+
+	rs = findnode(rm, "resources");
+	if (!rs)
+		die("Can't find \"resources\" in %s\n", ninfo.configfile);
+
+	printf("Name             Path\n");
+	for (cur_node = rs->children; cur_node; cur_node = cur_node->next)
+	{
+		if (cur_node->type == XML_ELEMENT_NODE && strcmp((char *)cur_node->name, "script") == 0)
+		{
+			xmlChar *name  = xmlGetProp(cur_node, BAD_CAST "name");
+			xmlChar *path = xmlGetProp(cur_node, BAD_CAST "file");
+
+			printf("%-16s %s\n", name, path);
+		}
+	}
+}
+
+void list_ips(int argc, char **argv)
+{
+	xmlNode *cur_node;
+	xmlNode *root_element;
+	xmlNode *rm, *rs;
+	xmlDocPtr doc;
+	struct option_info ninfo;
+	int opt;
+	int verbose=0;
+
+	memset(&ninfo, 0, sizeof(ninfo));
+
+	while ( (opt = getopt_long(argc, argv, "c:hv?", list_options, NULL)) != EOF)
+	{
+		switch(opt)
+		{
+		case 'c':
+			ninfo.configfile = strdup(optarg);
+			break;
+		case 'v':
+			verbose++;
+			break;
+		case '?':
+		default:
+			list_usage(argv[0]);
+		}
+	}
+	doc = open_configfile(&ninfo);
+	root_element = xmlDocGetRootElement(doc);
+
+	rm = findnode(root_element, "rm");
+	if (!rm)
+		die("Can't find \"rm\" in %s\n", ninfo.configfile);
+
+	rs = findnode(rm, "resources");
+	if (!rs)
+		die("Can't find \"resources\" in %s\n", ninfo.configfile);
+
+	printf("IP\n");
+	for (cur_node = rs->children; cur_node; cur_node = cur_node->next)
+	{
+		if (cur_node->type == XML_ELEMENT_NODE &&
+			strcmp((char *)cur_node->name, "ip") == 0)
+		{
+			xmlChar *ip  = xmlGetProp(cur_node, BAD_CAST "address");
+
+			printf("%s\n", ip);
+		}
+	}
+}
+
+void list_fs(int argc, char **argv)
+{
+	xmlNode *cur_node;
+	xmlNode *root_element;
+	xmlNode *rm, *rs;
+	xmlDocPtr doc;
+	struct option_info ninfo;
+	int opt;
+	int verbose=0;
+
+	memset(&ninfo, 0, sizeof(ninfo));
+
+	while ( (opt = getopt_long(argc, argv, "c:hv?", list_options, NULL)) != EOF)
+	{
+		switch(opt)
+		{
+		case 'c':
+			ninfo.configfile = strdup(optarg);
+			break;
+		case 'v':
+			verbose++;
+			break;
+		case '?':
+		default:
+			list_usage(argv[0]);
+		}
+	}
+	doc = open_configfile(&ninfo);
+	root_element = xmlDocGetRootElement(doc);
+
+	rm = findnode(root_element, "rm");
+	if (!rm)
+		die("Can't find \"rm\" in %s\n", ninfo.configfile);
+
+	rs = findnode(rm, "resources");
+	if (!rs)
+		die("Can't find \"resources\" in %s\n", ninfo.configfile);
+
+	printf("Name             Type  FUS Device              Mountpoint\n");
+	for (cur_node = rs->children; cur_node; cur_node = cur_node->next)
+	{
+		if (cur_node->type == XML_ELEMENT_NODE &&
+			strcmp((char *)cur_node->name, "fs") == 0)
+		{
+			xmlChar *name  = xmlGetProp(cur_node, BAD_CAST "name");
+			xmlChar *type  = xmlGetProp(cur_node, BAD_CAST "fstype");
+			xmlChar *force_fsck  = xmlGetProp(cur_node,
+						BAD_CAST "force_fsck");
+			xmlChar *force_unmount  = xmlGetProp(cur_node,
+						BAD_CAST "force_unmount");
+			xmlChar *self_fence  = xmlGetProp(cur_node,
+						BAD_CAST "self_fence");
+			xmlChar *device  = xmlGetProp(cur_node,
+						BAD_CAST "device");
+			xmlChar *mnt  = xmlGetProp(cur_node,
+						BAD_CAST "mountpoint");
+
+			char f, u, s;
+			INT_TO_CHAR(f, force_fsck)
+			INT_TO_CHAR(u, force_unmount)
+			INT_TO_CHAR(s, self_fence)
+			printf("%-16.16s %-5.5s %c%c%c %-19.19s %s\n", name, type, f, u,
+					s, device, mnt);
+		}
+	}
+}
+
+void list_fdomains(int argc, char **argv)
+{
+	xmlNode *cur_node, *fnode;
+	xmlNode *root_element;
+	xmlNode *rm, *fdomains;
+	xmlDocPtr doc;
+	struct option_info ninfo;
+	int opt;
+	int verbose=0;
+
+	memset(&ninfo, 0, sizeof(ninfo));
+
+	while ( (opt = getopt_long(argc, argv, "c:hv?", list_options, NULL)) != EOF)
+	{
+		switch(opt)
+		{
+		case 'c':
+			ninfo.configfile = strdup(optarg);
+			break;
+		case 'v':
+			verbose++;
+			break;
+		case '?':
+		default:
+			list_usage(argv[0]);
+		}
+	}
+	doc = open_configfile(&ninfo);
+	root_element = xmlDocGetRootElement(doc);
+
+	rm = findnode(root_element, "rm");
+	if (!rm)
+		die("Can't find \"rm\" in %s\n", ninfo.configfile);
+
+	fdomains = findnode(rm, "failoverdomains");
+	if (!fdomains)
+		die("Can't find \"failoverdomains\" in %s\n", ninfo.configfile);
+
+	printf("Name             OR Nodes\n");
+	for (cur_node = fdomains->children; cur_node; cur_node = cur_node->next)
+	{
+		if (cur_node->type == XML_ELEMENT_NODE &&
+			strcmp((char *)cur_node->name, "failoverdomain") == 0)
+		{
+			xmlChar *name  = xmlGetProp(cur_node, BAD_CAST "name");
+			xmlChar *ordered  = xmlGetProp(cur_node, BAD_CAST "ordered");
+			xmlChar *restricted = xmlGetProp(cur_node, BAD_CAST "restricted");
+			char o, r;
+			int first_node = 1;
+
+			INT_TO_CHAR(o, ordered)
+			INT_TO_CHAR(r, restricted)
+			printf("%-16.16s %c%c ", name, o, r);
+			for (fnode = cur_node->children; fnode; fnode = fnode->next)
+				if (fnode->type == XML_ELEMENT_NODE &&
+					strcmp((char *)fnode->name, "failoverdomainnode") == 0)
+				{
+					xmlChar *fname  = xmlGetProp(fnode, BAD_CAST "name");
+					if (first_node) {
+						printf("%s", fname);
+						first_node = 0;
+					} else
+						printf(",%s", fname);
+				}
+			printf("\n");
+		}
+	}
+}

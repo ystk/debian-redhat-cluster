@@ -1,9 +1,12 @@
 #include <pthread.h>
+#include <libcman.h>
 #include <iostate.h>
 #include <unistd.h>
 #include <time.h>
 #include <sys/time.h>
 #include <liblogthread.h>
+#include <stdint.h>
+#include "platform.h"
 #include "iostate.h"
 
 static iostate_t main_state = 0;
@@ -26,7 +29,7 @@ static struct state_table io_state_table[] = {
 {	STATE_LSEEK,	"seek"	},
 {	-1,		NULL	} };
 
-static const char *
+const char *
 state_to_string(iostate_t state)
 {
 	static const char *ret = "unknown";
@@ -65,6 +68,8 @@ io_nanny_thread(void *arg)
 	iostate_t last_main_state = 0, current_main_state = 0;
 	int last_main_incarnation = 0, current_main_incarnation = 0;
 	int logged_incarnation = 0;
+	cman_handle_t ch = (cman_handle_t)arg;
+	int32_t whine_state;
 
 	/* Start with wherever we're at now */
 	pthread_mutex_lock(&state_mutex);
@@ -96,6 +101,11 @@ io_nanny_thread(void *arg)
 			continue;
 		}
 
+		/* Whine on CMAN api */
+		whine_state = (int32_t)current_main_state;
+		swab32(whine_state);
+		cman_send_data(ch, &whine_state, sizeof(int32_t), 0, 178, 0);
+
 		/* Don't log things twice */
 		if (logged_incarnation == current_main_incarnation)
 			continue;
@@ -114,7 +124,7 @@ io_nanny_thread(void *arg)
 
 
 int
-io_nanny_start(int timeout)
+io_nanny_start(cman_handle_t ch, int timeout)
 {
 	int ret;
 
@@ -124,7 +134,7 @@ io_nanny_start(int timeout)
 	qdisk_timeout = timeout;
 	thread_active = 1;
 
-	ret = pthread_create(&io_nanny_tid, NULL, io_nanny_thread, NULL);
+	ret = pthread_create(&io_nanny_tid, NULL, io_nanny_thread, ch);
 	pthread_mutex_unlock(&state_mutex);
 
 	return ret;

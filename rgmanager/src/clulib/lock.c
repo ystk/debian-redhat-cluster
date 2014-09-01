@@ -50,9 +50,6 @@ clu_ls_lock(dlm_lshandle_t ls,
         int ret;
 
 	if (!ls || !lksb || !resource || !strlen(resource)) {
-		printf("%p %p %p %d\n", ls, lksb, resource,
-		       (int)strlen(resource));
-		printf("INVAL...\n");
 		errno = EINVAL;
 		return -1;
 	}

@@ -35,7 +35,7 @@ static int handle_migrate_status(const char *svcName, int ret, rg_state_t *svcSt
 
 static int _svc_stop_finish(const char *svcName, int failed, uint32_t newstate);
 
-static void
+void
 broadcast_event(const char *svcName, uint32_t state, int owner, int last)
 {
 	SmMessageSt msgp;
@@ -265,9 +265,12 @@ get_rg_state(const char *name, rg_state_t *svcblk)
 	uint32_t datalen = 0;
 #endif
 
-	/* ... */
-	if (name)
-		strncpy(svcblk->rs_name, name, sizeof(svcblk->rs_name));
+	if (!name) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	strncpy(svcblk->rs_name, name, sizeof(svcblk->rs_name));
 
 	snprintf(res, sizeof(res),"rg=\"%s\"", svcblk->rs_name);
 
@@ -360,9 +363,11 @@ get_rg_state_local(const char *name, rg_state_t *svcblk)
 	uint32_t datalen;
 #endif
 
-	/* ... */
-	if (name)
-		strncpy(svcblk->rs_name, name, sizeof(svcblk->rs_name));
+	if (!name) {
+		errno = EINVAL;
+		return -1;
+	}
+	strncpy(svcblk->rs_name, name, sizeof(svcblk->rs_name));
 
 	snprintf(res, sizeof(res),"rg=\"%s\"", svcblk->rs_name);
 
@@ -422,6 +427,7 @@ svc_advise_stop(rg_state_t *svcStatus, const char *svcName, int req)
 	
 	if (svcStatus->rs_flags & RG_FLAG_FROZEN) {
 		logt_print(LOG_DEBUG, "Service %s frozen.\n", svcName);
+		free_member_list(membership);
 		return 5;
 	}
 
@@ -553,6 +559,7 @@ svc_advise_start(rg_state_t *svcStatus, const char *svcName, int req)
 	
 	if (svcStatus->rs_flags & RG_FLAG_FROZEN) {
 		logt_print(LOG_DEBUG, "Service %s frozen.\n", svcName);
+		free_member_list(membership);
 		return 5;
 	}
 
@@ -618,6 +625,7 @@ svc_advise_start(rg_state_t *svcStatus, const char *svcName, int req)
 		/*
 		 * Service is running but owner is down -> RG_EFAILOVER
 		 */
+		svcStatus->rs_last_owner = svcStatus->rs_owner;
 		logt_print(LOG_NOTICE,
 		       "Taking over service %s from down member %s\n",
 		       svcName, memb_id_to_name(membership,
@@ -802,6 +810,92 @@ svc_start(const char *svcName, int req)
 
 
 /**
+ * Fix stuff
+ */
+int
+svc_convalesce(const char *svcName)
+{
+	struct dlm_lksb lockp;
+	rg_state_t svcStatus;
+	int ret;
+
+	if (rg_lock(svcName, &lockp) < 0) {
+		logt_print(LOG_ERR, "#451: Unable to obtain cluster lock: %s\n",
+		       strerror(errno));
+		return RG_EFAIL;
+	}
+
+	if (get_rg_state(svcName, &svcStatus) != 0) {
+		rg_unlock(&lockp);
+		logt_print(LOG_ERR, "#461: Failed getting status for RG %s\n",
+		       svcName);
+		return RG_EFAIL;
+	}
+
+	switch(svcStatus.rs_state) {
+	case RG_STATE_STARTED:
+		break;
+	case RG_STATE_STARTING:
+	case RG_STATE_STOPPING:
+	case RG_STATE_RECOVER:
+	case RG_STATE_MIGRATE:
+	case RG_STATE_ERROR:
+		rg_unlock(&lockp);
+		return RG_EAGAIN;
+	default:
+		rg_unlock(&lockp);
+		return RG_EINVAL;
+	}
+
+	if (svcStatus.rs_flags & RG_FLAG_FROZEN) {
+		rg_unlock(&lockp);
+		return RG_EFROZEN;
+	}
+
+	if (svcStatus.rs_owner != (uint32_t)my_id()) {
+		rg_unlock(&lockp);
+		return RG_EFORWARD;
+	}
+
+	if (!(svcStatus.rs_flags & RG_FLAG_PARTIAL)) {
+		rg_unlock(&lockp);
+		return RG_ERUN;
+	}
+
+	rg_unlock(&lockp);
+
+	logt_print(LOG_INFO, "Repairing %s\n", svcName);
+	ret = group_op(svcName, RG_CONVALESCE);
+
+	switch(ret) {
+	default:
+		logt_print(LOG_WARNING, "Failed to repair %s\n", svcName);
+		/* Fail to restart a non-critical resource
+		 * does not fail the service. */
+		return RG_EFAIL;
+	case 0:
+		logt_print(LOG_INFO, "Repair of %s was successful\n", svcName);
+		break;
+	}
+
+	/* Success - flip owner in state info */
+	if (rg_lock(svcName, &lockp) < 0) {
+		logt_print(LOG_ERR, "#455: Unable to obtain cluster lock: %s\n",
+			   strerror(errno));
+		return RG_EFAIL;
+	}
+
+	/* No need for a 'get' here since the service is still STARTED */
+	svcStatus.rs_flags &= ~RG_FLAG_PARTIAL;
+
+	set_rg_state(svcName, &svcStatus);
+	rg_unlock(&lockp);
+
+	return 0;
+}
+
+
+/**
  * Migrate a service to another node.  Relies on agent
  * operating synchronously
  */
@@ -827,6 +921,11 @@ svc_migrate(const char *svcName, int target)
 	if (m->cn_member == 0) {
 		free_member_list(membership);
 		return RG_ENODE;
+	}
+
+	if (node_should_start_safe(target, membership, svcName) == FOD_ILLEGAL) {
+		free_member_list(membership);
+		return RG_EDEPEND;
 	}
 
 	count_resource_groups_local(m);
@@ -1105,8 +1204,31 @@ svc_status(const char *svcName)
 	}
 
 	/* For running services, if the return code is 0, we're done*/
-	if (svcStatus.rs_state == RG_STATE_STARTED)
-		return handle_started_status(svcName, ret, &svcStatus);
+	if (svcStatus.rs_state == RG_STATE_STARTED) {
+		ret = handle_started_status(svcName, ret, &svcStatus);
+
+		if (ret & SFL_PARTIAL) {
+			ret &= ~SFL_PARTIAL;
+			svcStatus.rs_flags |= RG_FLAG_PARTIAL;
+			if (rg_lock(svcName, &lockp) < 0) {
+				logt_print(LOG_ERR,
+					   "#481: Unable to obtain cluster lock: %s\n",
+					   strerror(errno));
+				return RG_EFAIL;
+			}
+
+			if (set_rg_state(svcName, &svcStatus) != 0) {
+				rg_unlock(&lockp);
+				logt_print(LOG_ERR,
+					   "#482: Failed setting status for RG %s\n",
+					   svcName);
+				return RG_EFAIL;
+			}
+			rg_unlock(&lockp);
+		}
+
+		return ret;
+	}
 	
 	return handle_migrate_status(svcName, ret, &svcStatus);
 }
@@ -1116,7 +1238,7 @@ static int
 handle_started_status(const char *svcName, int ret,
 		      rg_state_t __attribute__((unused)) *svcStatus)
 {
-	int newowner;
+	int newowner, ret2;
 
 	if (ret & SFL_FAILURE) {
 		newowner = msvc_check_cluster(svcName);
@@ -1132,20 +1254,31 @@ handle_started_status(const char *svcName, int ret,
 		logt_print(LOG_WARNING, "Some independent resources in %s failed; "
 		       "Attempting inline recovery\n", svcName);
 
-		ret = group_op(svcName, RG_CONDSTOP);
-		if (!(ret & SFL_FAILURE)) {
-			ret = group_op(svcName, RG_CONDSTART);
+		ret2 = group_op(svcName, RG_CONDSTOP);
+		if (ret2 & SFL_PARTIAL) {
+			ret |= SFL_PARTIAL;
+			ret2 &= ~SFL_PARTIAL;
 		}
 
-		if (ret) {
+		if (!(ret2 & SFL_FAILURE)) {
+			ret2 = group_op(svcName, RG_CONDSTART);
+		} else {
 			logt_print(LOG_WARNING, "Inline recovery of %s failed\n",
 			       svcName);
-		} else {
-			logt_print(LOG_NOTICE,
-			       "Inline recovery of %s succeeded\n",
-			       svcName);
-			return 0;
+			return ret;
 		}
+
+		logt_print(LOG_NOTICE, "Inline recovery of %s complete\n",
+			   svcName);
+		if (ret & SFL_PARTIAL) {
+			logt_print(LOG_NOTICE, "Note: Some non-critical "
+				   "resources were stopped during recovery.\n");
+			logt_print(LOG_NOTICE, "Run 'clusvcadm -c %s' to "
+				   "restore them to operation.\n", svcName);
+			return SFL_PARTIAL;
+		}
+
+		return 0;
 	}
 
 	return ret;
@@ -1249,6 +1382,7 @@ _svc_stop(const char *svcName, int req, int recover, uint32_t newstate)
 		svcStatus.rs_last_owner = svcStatus.rs_owner;
 		svcStatus.rs_owner = 0;
 		svcStatus.rs_state = RG_STATE_STOPPED;
+		svcStatus.rs_flags = 0;
 		if (set_rg_state(svcName, &svcStatus) != 0) {
 			rg_unlock(&lockp);
 			return RG_EFAIL;
@@ -1279,6 +1413,7 @@ _svc_stop(const char *svcName, int req, int recover, uint32_t newstate)
 		logt_print(LOG_DEBUG, "%s is clean; skipping double-stop\n",
 		       svcName);
 		svcStatus.rs_state = newstate;
+		svcStatus.rs_flags = 0;
 
 		if (set_rg_state(svcName, &svcStatus) != 0) {
 			rg_unlock(&lockp);
@@ -1306,11 +1441,23 @@ _svc_stop(const char *svcName, int req, int recover, uint32_t newstate)
 
 	ret = group_op(svcName, RG_STOP);
 
-	if (old_state == RG_STATE_FAILED && newstate == RG_STATE_DISABLED) {
-		if (ret)
+	/* fix up return code on failure during disable */
+	if (ret)
+		ret = RG_EFAIL;
+
+	if ((old_state == RG_STATE_FAILED ||
+	     old_state == RG_STATE_DISABLED) &&
+	    newstate == RG_STATE_DISABLED) {
+		if (ret) {
+			/*
+			 * Return warning on disable-after-fail.
+			 * (mark it disabled anyway)
+			 */
 			logt_print(LOG_ALERT, "Marking %s as 'disabled', "
 			       "but some resources may still be allocated!\n",
 			       svcName);
+			ret = RG_EWARNING;
+		}
 		_svc_stop_finish(svcName, 0, newstate);
 	} else {
 		_svc_stop_finish(svcName, ret, newstate);
@@ -1346,8 +1493,10 @@ _svc_stop_finish(const char *svcName, int failed, uint32_t newstate)
 		return 0;
 	}
 
-	svcStatus.rs_last_owner = svcStatus.rs_owner;
-	svcStatus.rs_owner = 0;
+	if (svcStatus.rs_owner != 0) {
+		svcStatus.rs_last_owner = svcStatus.rs_owner;
+		svcStatus.rs_owner = 0;
+	}
 
 	if (failed) {
 		logt_print(LOG_CRIT, "#12: RG %s failed to stop; intervention "
@@ -1359,6 +1508,8 @@ _svc_stop_finish(const char *svcName, int failed, uint32_t newstate)
 	}
 
 	svcStatus.rs_state = newstate;
+	/* If host fails, we need to remember frozen flag */
+	svcStatus.rs_flags &= RG_FLAG_FROZEN;
 
 	logt_print(LOG_NOTICE, "Service %s is %s\n", svcName,
 	       rg_state_str(svcStatus.rs_state));
@@ -1690,7 +1841,7 @@ handle_relocate_req(char *svcName, int orig_request, int preferred_target,
 		ret = _svc_stop(svcName, request, 0, RG_STATE_STOPPED);
 		if (ret == RG_EFAIL) {
 			svc_fail(svcName);
-			return RG_EFAIL;
+			return RG_EABORT;
 		}
 		if (ret == RG_EFROZEN) {
 			return RG_EFROZEN;
@@ -1925,8 +2076,16 @@ handle_start_req(char *svcName, int req, int *new_owner)
 
 	/* Check for dependency.  We cannot start unless our
 	   dependency is met */
-	if (check_depend_safe(svcName) == 0)
+	if (check_depend_safe(svcName) == 0) {
+		if (req == RG_START_RECOVER) {
+			logt_print(LOG_INFO, "Dependency for %s missing "
+				   "during recovery; marking as stopped",
+				   svcName);
+
+			_svc_stop_finish(svcName, 0, RG_STATE_STOPPED);
+		}
 		return RG_EDEPEND;
+	}
 	
 	/*
 	 * This is a 'root' start request.  We need to clear out our failure
@@ -2094,6 +2253,13 @@ handle_recover_req(char *svcName, int *new_owner)
 	/* Check restart counter/timer for this resource */
 	if (check_restart(svcName) > 0) {
 		clear_restart(svcName);
+
+		if (strstr(policy, "disable")) {
+			logt_print(LOG_NOTICE,
+				   "Restart threshold for %s exceeded; "
+				   "disabling\n", svcName);
+			return svc_disable(svcName);
+		}
 		logt_print(LOG_NOTICE, "Restart threshold for %s exceeded; "
 		       "attempting to relocate\n", svcName);
 		return handle_relocate_req(svcName, RG_START_RECOVER, -1,
@@ -2143,6 +2309,7 @@ handle_fd_start_req(char *svcName, int request, int *new_owner)
 
 		switch(ret) {
 		case RG_ESUCCESS:
+			*new_owner = target;
 		    	ret = RG_ESUCCESS;
 			goto out;
 		case RG_ERUN:

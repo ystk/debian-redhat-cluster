@@ -56,6 +56,13 @@ set_transition_throttling(int nsecs)
 }
 
 
+int
+get_transition_throttling(void)
+{
+	return transition_throttling;
+}
+
+
 void
 set_central_events(int flag)
 {
@@ -255,6 +262,7 @@ find_master(void)
 	} else {
 		masterinfo = (event_master_t *)data;
 	}
+
 	free_member_list(m);
 
 	if (masterinfo && (sz >= sizeof(*masterinfo))) {
@@ -268,7 +276,12 @@ find_master(void)
 			mi = masterinfo;
 			pthread_mutex_unlock(&mi_mutex);
 			master_id = masterinfo->m_nodeid;
+		} else {
+			free(data);
 		}
+	} else {
+		free(data);
+		masterinfo = NULL;
 	}
 
 	return master_id;

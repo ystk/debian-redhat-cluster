@@ -33,13 +33,13 @@ failure()
 status()
 {
 	pid=$(pidof $1 2>/dev/null)
-	rtrn=$?
-	if [ $rtrn -ne 0 ]; then
+	statusrtrn=$?
+	if [ $statusrtrn -ne 0 ]; then
 		echo "$1 is stopped"
 	else
 		echo "$1 (pid $pid) is running..."
 	fi
-	return $rtrn
+	return $statusrtrn
 }
 
 # rpm based distros
@@ -73,6 +73,11 @@ stop_cluster()
 }
 
 rtrn=0
+
+if [ "$EUID" != "0" ]; then
+	echo "Only root can execute $0 script"
+	exit 4
+fi
 
 case "$1" in
 start)

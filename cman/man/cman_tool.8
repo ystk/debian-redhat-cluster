@@ -58,6 +58,12 @@ version of "leave force" so only use if if you really know what you are doing.
 Tells CMAN a new value of expected votes and instructs it to recalculate
 quorum based on this value. 
 .br
+The recalculation takes into account the number of currently
+active nodes, so this option should not be used in an attempt to
+artificially lower the quorum value in advance of a planned shutdown of
+cluster nodes.  Instead, the 'cman_tool leave remove' command should be
+used (see the 'leave' subcommand above).
+.br
 Use this option if your cluster has lost quorum due to nodes failing and
 you need to get it running again in a hurry.
 
@@ -65,15 +71,12 @@ you need to get it running again in a hurry.
 .I version
 Used alone this will report the major, minor, patch and config versions
 used by CMAN (also displayed in 'cman_tool status'). It can also be used
-with -r to tell cluster members to update. 
+with -r to tell cluster members to update the cluster configuration.
 .br
-The argument to -r is the version number that cman should look for. If 
-that version is not currently available then cman will poll for it. If
-a version of 0 is specified then cman will read the configuration file,
-validate it, distribute it around the cluster (if necessary) and
-activate it.
-.br
-The -D flag can disable the validation stage. This is NOT recommended.
+If -r is specified, cman will read the configuration file,
+validate it, distribute it around the cluster (if necessary) an
+activate it.  See the VERSION OPTIONS section below for additional
+options to the \fBversion\fP command.
 
 .TP
 .I wait 
@@ -136,23 +139,28 @@ name as it appears in 'cman_tool nodes'.
 
 .SH "VERSION" OPTIONS
 .TP
-.I -r <config_version>
+.I -r
 Update config version. You don't need to use this when adding a new node,
 the new cman node will tell the rest of the cluster to read the latest
-version of the config file automatically. 
+version of the config file automatically.  The version present in the
+new configuration must be higher than the one currently in use by cman.
 .br
-In fact the argument to -r might look as though it is ignored. 
-Its presence simply tells cman to re-read the configuration file and look 
-for that version in the file. cman will keep re-reading the file
-until a version number >= the passed version is found.
-.br
+
 cman_tool version on its own will always show the current version
 and not the one being looked for. So be aware that the display
-will possible not update immediately after you have run
+will possibly not update immediately after you have run
 cman_tool version -r.
 .TP
 .I -D<option>
 see "JOIN" options
+.TP
+.I -S
+By default cman_tool version will try to distribute the new cluster.conf
+file using ccs_sync and ricci. If you have distributed the file yourself
+and/or do not have ricci installed then the -S option will skip this step.
+NOTE: it is still important that all nodes in the cluster have the
+same version of the file. Make sure that this is the case before using
+this option.
 .SH "WAIT" OPTIONS
 .TP
 .I -q
@@ -324,7 +332,7 @@ include: id, name, type, and addr.
 .br
 .SH "DEBUG" OPTIONS
 .TP
-.I -d <value>
+.I -d<value>
 The value is a bitmask of
 .br 
 2 Barriers

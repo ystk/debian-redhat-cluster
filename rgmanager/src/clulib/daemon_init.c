@@ -50,7 +50,6 @@ check_pid_valid(pid_t pid, char *prog)
 
 	snprintf(dirpath, sizeof (dirpath), "/proc/%d", pid);
 	if ((dir = opendir(dirpath)) == NULL) {
-		closedir(dir);
 		return 0;	/* Pid has gone away. */
 	}
 	closedir(dir);

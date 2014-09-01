@@ -24,16 +24,7 @@ ifdef INITDT
 	${UNINSTALL} ${INITDT} ${initddir}
 endif
 ifdef UDEVT
-	${UNINSTALL} ${UDEVT} ${DESTDIR}/etc/udev/rules.d
-endif
-ifdef KMODT
-	${UNINSTALL} ${KMODT} ${module_dir}/${KDIRT}
-endif
-ifdef KHEADT
-	${UNINSTALL} ${KHEADT} ${incdir}/linux
-endif
-ifdef FENCEAGENTSLIB
-	${UNINSTALL} ${FENCEAGENTSLIB}* ${DESTDIR}/${fenceagentslibdir}
+	${UNINSTALL} ${UDEVT} ${DESTDIR}/lib/udev/rules.d
 endif
 ifdef DOCS
 	${UNINSTALL} ${DOCS} ${docdir}
@@ -47,8 +38,17 @@ endif
 ifdef PKGCONF
 	${UNINSTALL} ${PKGCONF} ${pkgconfigdir}
 endif
+ifdef SHAREDIRTEX
+	${UNINSTALL} ${SHAREDIRTEX} ${sharedir}
+endif
 ifdef SHAREDIRT
 	${UNINSTALL} ${SHAREDIRT} ${sharedir}
+endif
+ifdef SHAREDIRSYMT
+	${UNINSTALL} ${SHAREDIRSYMT} ${sharedir}
+endif
+ifdef RELAXNGDIRT
+	${UNINSTALL} ${RELAXNGDIRT} ${sharedir}/relaxng
 endif
 ifdef MANTARGET
 	set -e; \

@@ -13,20 +13,13 @@ include $(OBJDIR)/make/uninstall.mk
 OBJS=	main.o
 
 CFLAGS += -I$(S) -I$(S)/../daemon/ -I$(S)/../lib/
-CFLAGS += -I${dlmcontrolincdir}
-CFLAGS += -I${fencedincdir}
-CFLAGS += -I$(S)/../libgfscontrol
 CFLAGS += -I${incdir}
 CFLAGS += -I${KERNEL_SRC}/include/
 
-LDFLAGS += -L${dlmcontrollibdir} -ldlmcontrol
-LDFLAGS += -L${fencedlibdir} -lfenced
 LDFLAGS += -L../lib -lgroup
-LDFLAGS += -L../libgfscontrol -lgfscontrol
 LDFLAGS += -L${libdir}
 
 LDDEPS += ../lib/libgroup.a
-LDDEPS += ../libgfscontrol/libgfscontrol.a
 
 ${TARGET}: ${OBJS} ${LDDEPS}
 	$(CC) -o $@ $^ $(LDFLAGS)

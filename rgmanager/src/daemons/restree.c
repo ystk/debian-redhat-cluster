@@ -95,7 +95,7 @@ kill_env(char **env)
    @see			build_env
  */
 static void
-add_ocf_stuff(resource_t *res, char **env, int depth, int refcnt)
+add_ocf_stuff(resource_t *res, char **env, int depth, int refcnt, int timeout)
 {
 	char ver[10];
 	char *minor, *val;
@@ -190,6 +190,17 @@ add_ocf_stuff(resource_t *res, char **env, int depth, int refcnt)
 		return;
 	snprintf(val, n, "%s=%s", OCF_REFCNT_STR, ver);
 	*env = val; env++;
+
+	/*
+	   Store the resource action timeout
+	 */
+	snprintf(ver, sizeof(ver), "%d", timeout);
+	n = strlen(OCF_TIMEOUT_STR) + strlen(ver) + 2;
+	val = malloc(n);
+	if (!val)
+		return;
+	snprintf(val, n, "%s=%s", OCF_TIMEOUT_STR, ver);
+	*env = val; env++;
 }
 
 
@@ -203,7 +214,7 @@ add_ocf_stuff(resource_t *res, char **env, int depth, int refcnt)
    @see			kill_env res_exec add_ocf_stuff
  */
 static char **
-build_env(resource_node_t *node, int depth, int refcnt)
+build_env(resource_node_t *node, int depth, int refcnt, int timeout)
 {
 	resource_t *res = node->rn_resource;
 	char **env;
@@ -211,7 +222,7 @@ build_env(resource_node_t *node, int depth, int refcnt)
 	int x, attrs, n;
 
 	for (attrs = 0; res->r_attrs && res->r_attrs[attrs].ra_name; attrs++);
-	attrs += 8; /*
+	attrs += 9; /*
 		   Leave space for:
 		   OCF_RA_VERSION_MAJOR
 		   OCF_RA_VERSION_MINOR
@@ -220,6 +231,7 @@ build_env(resource_node_t *node, int depth, int refcnt)
 		   OCF_RESOURCE_TYPE
 		   OCF_CHECK_LEVEL
 		   OCF_RESKEY_RGMANAGER_meta_refcnt
+		   OCF_RESKEY_RGMANAGER_meta_timeout
 		   (null terminator)
 		 */
 
@@ -259,7 +271,7 @@ build_env(resource_node_t *node, int depth, int refcnt)
 		++attrs;
 	}
 
-	add_ocf_stuff(res, &env[attrs], depth, refcnt);
+	add_ocf_stuff(res, &env[attrs], depth, refcnt, timeout);
 
 	return env;
 }
@@ -318,7 +330,8 @@ res_exec(resource_node_t *node, int op, const char *arg, int depth)
 	int childpid, pid;
 	int ret = 0;
 	int act_index;
-	time_t sleeptime = 0;
+	int inc = node->rn_resource->r_incarnations;
+	time_t sleeptime = 0, timeout = 0;
 	char **env = NULL;
 	resource_t *res = node->rn_resource;
 	const char *op_str = agent_op_str(op);
@@ -338,8 +351,18 @@ res_exec(resource_node_t *node, int op, const char *arg, int depth)
 	if (act_index < 0)
 		return 0;
 
+	if (!(node->rn_flags & RF_ENFORCE_TIMEOUTS))
+		timeout = node->rn_actions[act_index].ra_timeout;
+
+	/* rgmanager ref counts are designed to track *other* incarnations
+	   on the host.  So, if we're started/failed, the RA should not count
+	   this incarnation */
+	if (inc && (node->rn_state == RES_STARTED ||
+		    node->rn_state == RES_FAILED))
+		--inc;
+
 #ifdef DEBUG
-	env = build_env(node, depth, node->rn_resource->r_incarnations);
+	env = build_env(node, depth, inc, (int)timeout);
 	if (!env)
 		return -errno;
 #endif
@@ -365,7 +388,7 @@ res_exec(resource_node_t *node, int op, const char *arg, int depth)
 #endif
 
 #ifndef DEBUG
-		env = build_env(node, depth, node->rn_resource->r_incarnations);
+		env = build_env(node, depth, inc, (int)timeout);
 #endif
 
 		if (!env)
@@ -379,6 +402,7 @@ res_exec(resource_node_t *node, int op, const char *arg, int depth)
 				 res->r_rule->rr_agent);
 
 		restore_signals();
+		setpgrp();
 
 		if (arg)
 			execle(fullpath, fullpath, op_str, arg, NULL, env);
@@ -467,18 +491,50 @@ res_exec(resource_node_t *node, int op, const char *arg, int depth)
 
 static inline void
 assign_restart_policy(resource_t *curres, resource_node_t *parent,
-		      resource_node_t *node)
+		      resource_node_t *node, int ccsfd, char *base)
 {
 	char *val;
 	int max_restarts = 0;
 	time_t restart_expire_time = 0;
-
-	node->rn_restart_counter = NULL;
+	char tok[1024];
 
 	if (!curres || !node)
 		return;
-	if (parent) /* Non-parents don't get one for now */
+	node->rn_restart_counter = NULL;
+	if (parent &&
+	    !(node->rn_flags & RF_INDEPENDENT))
 		return;
+
+	if (node->rn_flags & RF_INDEPENDENT) {
+		/* per-resource-node failures / expire times */
+		snprintf(tok, sizeof(tok), "%s/@__max_restarts", base);
+#ifndef NO_CCS
+		if (ccs_get(ccsfd, tok, &val) == 0) {
+#else
+		if (conf_get(tok, &val) == 0) {
+#endif
+			max_restarts = atoi(val);
+			if (max_restarts <= 0)
+				max_restarts = 0;
+			free(val);
+		}
+	
+		snprintf(tok, sizeof(tok), "%s/@__restart_expire_time", base);
+#ifndef NO_CCS
+		if (ccs_get(ccsfd, tok, &val) == 0) {
+#else
+		if (conf_get(tok, &val) == 0) {
+#endif
+			restart_expire_time = (time_t)expand_time(val);
+			if ((int64_t)restart_expire_time <= 0)
+				restart_expire_time = 0;
+			free(val);
+		}
+
+		if (restart_expire_time == 0 || max_restarts == 0)
+			return;
+		goto out_assign;
+	}
 
 	val = (char *)res_attr_value(curres, "max_restarts");
 	if (!val)
@@ -493,6 +549,7 @@ assign_restart_policy(resource_t *curres, resource_node_t *parent,
 			return;
 	}
 
+out_assign:
 	node->rn_restart_counter = restart_init(restart_expire_time,
 						max_restarts);
 }
@@ -582,17 +639,25 @@ do_load_resource(int ccsfd, char *base,
 	node->rn_state = RES_STOPPED;
 	node->rn_flags = 0;
 	node->rn_actions = (resource_act_t *)act_dup(curres->r_actions);
-	assign_restart_policy(curres, parent, node);
 
-	snprintf(tok, sizeof(tok), "%s/@__independent_subtree", base);
+
+	if (parent) {
+		/* Independent subtree / non-critical for top-level is
+		 * not useful and can interfere with restart thresholds for
+		 * non critical resources */
+		snprintf(tok, sizeof(tok), "%s/@__independent_subtree", base);
 #ifndef NO_CCS
-	if (ccs_get(ccsfd, tok, &ref) == 0) {
+		if (ccs_get(ccsfd, tok, &ref) == 0) {
 #else
-	if (conf_get(tok, &ref) == 0) {
+		if (conf_get(tok, &ref) == 0) {
 #endif
-		if (atoi(ref) > 0 || strcasecmp(ref, "yes") == 0)
-			node->rn_flags |= RF_INDEPENDENT;
-		free(ref);
+			if (atoi(ref) == 1 || strcasecmp(ref, "yes") == 0)
+				node->rn_flags |= RF_INDEPENDENT;
+			if (atoi(ref) == 2 || strcasecmp(ref, "non-critical") == 0) {
+				curres->r_flags |= RF_NON_CRITICAL;
+			}
+			free(ref);
+		}
 	}
 
 	snprintf(tok, sizeof(tok), "%s/@__enforce_timeouts", base);
@@ -637,6 +702,23 @@ do_load_resource(int ccsfd, char *base,
 	}
 
 	curres->r_refs++;
+
+	if (curres->r_refs > 1 &&
+	    (curres->r_flags & RF_NON_CRITICAL)) {
+		res_build_name(tok, sizeof(tok), curres);
+		printf("Non-critical flag for %s is being cleared due to multiple references.\n", tok);
+		curres->r_flags &= ~RF_NON_CRITICAL;
+	}
+
+	if (curres->r_flags & RF_NON_CRITICAL) {
+		/* Independent subtree is implied if a
+		 * resource is non-critical
+		 */
+		node->rn_flags |= RF_NON_CRITICAL | RF_INDEPENDENT;
+
+	}
+
+	assign_restart_policy(curres, parent, node, ccsfd, base);
 
 	*newnode = node;
 
@@ -926,9 +1008,12 @@ _print_resource_tree(FILE *fp, resource_node_t **tree, int level)
 				fprintf(fp, "DESTROY ");
 			if (node->rn_flags & RF_ENFORCE_TIMEOUTS)
 				fprintf(fp, "ENFORCE-TIMEOUTS ");
+			if (node->rn_flags & RF_NON_CRITICAL)
+				fprintf(fp, "NON-CRITICAL ");
 			fprintf(fp, "]");
 		}
-		fprintf(fp, " {\n");
+
+		fprintf(fp, " (S%d) {\n", node->rn_state);
 
 		for (x = 0; node->rn_resource->r_attrs &&
 		     node->rn_resource->r_attrs[x].ra_value; x++) {
@@ -1114,12 +1199,12 @@ mark_nodes(resource_node_t *node, int state, int setflags, int clearflags)
 	resource_node_t *child;
 
 	list_for(&node->rn_child, child, x) {
-		if (child->rn_child)
-			mark_nodes(child->rn_child, state, setflags,
-				   clearflags);
+		mark_nodes(child, state, setflags,
+			   clearflags);
 	}
 
-	node->rn_state = state;
+	if (state >= RES_STOPPED)
+		node->rn_state = state;
 	node->rn_flags |= (setflags);
 	node->rn_flags &= ~(clearflags);
 }
@@ -1136,6 +1221,9 @@ do_status(resource_node_t *node)
 	int x = 0, idx = -1;
 	int has_recover = 0;
 	time_t delta = 0, now = 0;
+
+	if (node->rn_state == RES_DISABLED)
+		return 0;
 
 	now = time(NULL);
 
@@ -1298,7 +1386,7 @@ _res_op_internal(resource_node_t __attribute__ ((unused)) **tree,
 		 char *type, void *__attribute__((unused))ret, int realop,
 		 resource_node_t *node)
 {
-	int rv = 0, me, op;
+	int rv = 0, me, op, rte = 0;
 
 	/* Restore default operation. */
 	op = realop;
@@ -1331,6 +1419,15 @@ _res_op_internal(resource_node_t __attribute__ ((unused)) **tree,
 		   CONDSTART and CONDSTOP are no-ops if
 		   the appropriate flag is not set.
 		 */
+		if ((op == RS_CONVALESCE) &&
+		    node->rn_state == RES_DISABLED) {
+			printf("Node %s:%s - Convalesce\n",
+			       node->rn_resource->r_rule->rr_type,
+			       primary_attr_value(node->rn_resource));
+			mark_nodes(node, RES_STOPPED, RF_NEEDSTART, 0);
+			op = RS_START;
+		}
+
 	       	if ((op == RS_CONDSTART) &&
 		    (node->rn_flags & RF_NEEDSTART)) {
 			printf("Node %s:%s - CONDSTART\n",
@@ -1351,7 +1448,16 @@ _res_op_internal(resource_node_t __attribute__ ((unused)) **tree,
 	/* Start starts before children */
 	if (me && (op == RS_START)) {
 
+		if (node->rn_state == RES_DISABLED)
+			/* Nothing to do - children are also disabled */
+			return 0;
+
+		if ((realop == RS_START || realop == RS_CONVALESCE) &&
+		     node->rn_flags & RF_INDEPENDENT)
+			restart_clear(node->rn_restart_counter);
+
 		pthread_mutex_lock(&node->rn_resource->r_mutex);
+
 		if (node->rn_flags & RF_RECONFIG &&
 		    realop == RS_CONDSTART) {
 			rv = res_exec(node, RS_RECONFIG, NULL, 0);
@@ -1396,21 +1502,40 @@ _res_op_internal(resource_node_t __attribute__ ((unused)) **tree,
 			   dependent children are failed, whether or not this
 			   node is independent or not.
 			 */
-			mark_nodes(node, RES_FAILED,
-				   RF_NEEDSTART | RF_NEEDSTOP, 0);
 
 			/* If we're an independent subtree, return a flag
 			   stating that this section is recoverable apart
 			   from siblings in the resource tree.  All child
 			   resources of this node must be restarted,
 			   but siblings of this node are not affected. */
-			if (node->rn_flags & RF_INDEPENDENT)
-				return SFL_RECOVERABLE;
+			if (node->rn_flags & RF_INDEPENDENT) {
+				
+				rte = restart_threshold_exceeded(node->rn_restart_counter);
+				if ((node->rn_flags & RF_NON_CRITICAL) && (rte ||
+				    !node->rn_restart_counter)) {
+					mark_nodes(node, RES_FAILED,
+						   RF_NEEDSTOP | RF_QUIESCE, 0);
+					restart_clear(node->rn_restart_counter);
+					return SFL_RECOVERABLE|SFL_PARTIAL;
+				} else if (!rte ||
+					   !node->rn_restart_counter) {
+					restart_add(node->rn_restart_counter);
+					mark_nodes(node, RES_FAILED,
+						   RF_NEEDSTART | RF_NEEDSTOP, 0);
+					return SFL_RECOVERABLE;
+				} else {
+					restart_clear(node->rn_restart_counter);
+					return SFL_FAILURE;
+				}
+			}
 
 			return SFL_FAILURE;
 		}
 
-		mark_nodes(node, RES_STARTED, 0, RF_NEEDSTOP);
+		if (node->rn_state != RES_DISABLED) {
+			node->rn_state = RES_STARTED;
+			node->rn_flags &= ~RF_NEEDSTOP;
+		}
 	}
 
        if (node->rn_child) {
@@ -1424,9 +1549,24 @@ _res_op_internal(resource_node_t __attribute__ ((unused)) **tree,
 		  the resource tree. */
 		if (op == RS_STATUS && (rv & SFL_FAILURE) &&
 		    (node->rn_flags & RF_INDEPENDENT)) {
-			mark_nodes(node, RES_FAILED,
-				   RF_NEEDSTART | RF_NEEDSTOP, 0);
+
+			rte = restart_threshold_exceeded(node->rn_restart_counter);
+
 			rv = SFL_RECOVERABLE;
+			if ((node->rn_flags & RF_NON_CRITICAL) && (rte || 
+			    !node->rn_restart_counter)) {
+				/* if non-critical, just stop */
+				mark_nodes(node, RES_FAILED, RF_NEEDSTOP | RF_QUIESCE, 0);
+
+				rv |= SFL_PARTIAL;
+			} else if (!rte || !node->rn_restart_counter) {
+				restart_add(node->rn_restart_counter);
+				mark_nodes(node, RES_FAILED,
+					   RF_NEEDSTOP | RF_NEEDSTART, 0);
+			} else {
+				restart_clear(node->rn_restart_counter);
+				rv = SFL_FAILURE;
+			}
 		}
 	}
  			
@@ -1436,27 +1576,45 @@ _res_op_internal(resource_node_t __attribute__ ((unused)) **tree,
 		/* Decrease incarnations so the script knows how many *other*
 		   incarnations there are. */
 		pthread_mutex_lock(&node->rn_resource->r_mutex);
-		if (node->rn_state == RES_STARTED) {
-			assert(node->rn_resource->r_incarnations >= 0);
-			if (node->rn_resource->r_incarnations > 0)
-				--node->rn_resource->r_incarnations;
-		}
 
 		node->rn_flags &= ~RF_NEEDSTOP;
 		rv |= res_exec(node, op, NULL, 0);
 
-		if (rv != 0) {
-			if (node->rn_state == RES_STARTED) {
-				/* Fail to stop: fix incarnations */
-				++node->rn_resource->r_incarnations;
+		if (node->rn_flags & (RF_NEEDSTART|RF_QUIESCE) &&
+		    node->rn_flags & RF_INDEPENDENT &&
+		    node->rn_flags & RF_NON_CRITICAL) {
+			/* Non-critical resources = do not fail 
+			 * service if the resource fails to stop
+			 */
+			if (rv & SFL_FAILURE) {
+				logt_print(LOG_WARNING, "Failed to stop subtree %s:%s"
+					   " during non-critical recovery "
+					   "operation\n",
+					   node->rn_resource->r_rule->rr_type,
+					   primary_attr_value(
+						node->rn_resource));
+				rv = SFL_PARTIAL;
+				node->rn_flags |= RF_QUIESCE;
 			}
+		}
+
+		if (rv == 0 && (node->rn_state == RES_STARTED ||
+				node->rn_state == RES_FAILED)) {
+			assert(node->rn_resource->r_incarnations >= 0);
+			if (node->rn_resource->r_incarnations > 0)
+				--node->rn_resource->r_incarnations;
+		} else if (rv != 0 && (node->rn_state != RES_DISABLED &&
+			   !(node->rn_flags & RF_QUIESCE))) {
 			node->rn_state = RES_FAILED;
 			pthread_mutex_unlock(&node->rn_resource->r_mutex);
 			return SFL_FAILURE;
 		}
 		pthread_mutex_unlock(&node->rn_resource->r_mutex);
 
-		if (node->rn_state != RES_STOPPED) {
+		if (node->rn_flags & RF_QUIESCE) {
+			mark_nodes(node, RES_DISABLED, 0,
+				   RF_NEEDSTART|RF_QUIESCE);
+		} else {
 			node->rn_state = RES_STOPPED;
 		}
 	}
@@ -1543,6 +1701,20 @@ int
 res_condstop(resource_node_t **tree, resource_t *res, void *ret)
 {
 	return _res_op(tree, res, NULL, ret, RS_CONDSTOP);
+}
+
+
+/**
+   Repair/fix/convalesce all occurrences of a resource in a tree
+
+   @param tree		Tree to search for our resource.
+   @param res		Resource to start/stop
+   @param ret		Unused
+ */
+int
+res_convalesce(resource_node_t **tree, resource_t *res, void *ret)
+{
+	return _res_op(tree, res, NULL, ret, RS_CONVALESCE);
 }
 
 
@@ -1713,6 +1885,9 @@ resource_tree_delta(resource_node_t **ltree, resource_node_t **rtree)
 			if (rc == 0 || rc == 2) {
 				if (rc == 2)
 					rn->rn_flags |= RF_NEEDSTART | RF_RECONFIG;
+
+				if (rc == 0) 
+					rn->rn_state = ln->rn_state;
 
 				/* Ok, same resource.  Recurse. */
 				ln->rn_flags |= RF_COMMON;

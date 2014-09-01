@@ -16,7 +16,8 @@ OBJS=	config.o \
 	main.o \
 	member_cman.o \
 	recover.o \
-	logging.o
+	logging.o \
+	dbus.o
 
 CFLAGS += -D_FILE_OFFSET_BITS=64
 CFLAGS += -I${ccsincdir} -I${cmanincdir} -I${logtincdir} -I${corosyncincdir}
@@ -29,6 +30,11 @@ LDFLAGS += -L${logtlibdir} -L${fencelibdir} -llogthread -lfence
 LDFLAGS += -L${corosynclibdir} -lcpg -lpthread
 LDFLAGS += -L../../group/lib -l group
 LDFLAGS += -L${libdir}
+
+ifndef disable_dbus
+CFLAGS += $(shell pkg-config --cflags dbus-1) -DDBUS
+LDFLAGS += $(shell pkg-config --libs dbus-1)
+endif
 
 LDDEPS += ../../group/lib/libgroup.a
 

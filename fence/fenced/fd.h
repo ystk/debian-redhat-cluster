@@ -64,6 +64,8 @@ extern int daemon_quit;
 extern int cluster_down;
 extern struct list_head domains;
 extern int cluster_quorate;
+extern int cluster_quorate_from_last_update;
+extern uint32_t cluster_ringid_seq;
 extern uint64_t quorate_time;
 extern int our_nodeid;
 extern char our_name[MAX_NODENAME_LEN+1];
@@ -95,6 +97,7 @@ do { \
 
 #define FD_MFLG_JOINING		1  /* accompanies start, we are joining */
 #define FD_MFLG_COMPLETE	2  /* accompanies start, we have complete info */
+#define FD_MFLG_DUPLICATE_CG	4
 
 struct fd_header {
 	uint16_t version[3];
@@ -122,6 +125,7 @@ struct change {
 	int failed_count;
 	int state; /* CGST_ */
 	int we_joined;
+	int sent_start;
 	uint32_t seq; /* just used as a reference when debugging */
 	uint64_t create_time;
 };
@@ -146,6 +150,9 @@ struct node_history {
 	int fence_external_node;
 	int fence_master;
 	int fence_how; /* VIC_DONE_ */
+	uint32_t last_match_seq;
+	uint32_t fail_seq;
+	uint32_t left_seq;
 };
 
 struct node {
@@ -172,6 +179,7 @@ struct fd {
 	struct list_head	node_history;
 	int			init_complete;
 	int			local_init_complete;
+	struct cpg_ring_id	cpg_ringid;
 
 	/* general domain membership */
 
@@ -277,6 +285,12 @@ void fence_victims(struct fd *fd);
 void init_logging(void);
 void setup_logging(void);
 void close_logging(void);
+
+/* dbus.c */
+
+void fd_dbus_init(void);
+void fd_dbus_exit(void);
+void fd_dbus_send(const char *nodename, int nodeid, int result);
 
 #endif				/*  __FD_DOT_H__  */
 

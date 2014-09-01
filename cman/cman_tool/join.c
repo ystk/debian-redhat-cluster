@@ -40,44 +40,56 @@ static const char *corosync_exit_reason(signed char status)
 {
 	static char reason[256];
 	switch (status) {
-	case -2:
+	case 1:
 		return "Could not determine UID to run as";
 		break;
-	case -3:
+	case 2:
 		return "Could not determine GID to run as";
 		break;
-	case -4:
+	case 3:
 		return "Error initialising memory pool";
 		break;
-	case -5:
+	case 4:
 		return "Could not fork";
 		break;
-	case -6:
+	case 5:
 		return "Could not bind to libais socket";
 		break;
-	case -7:
+	case 6:
 		return "Could not bind to network socket";
 		break;
-	case -8:
+	case 7:
 		return "Could not read security key for communications";
 		break;
-	case -9:
+	case 8:
 		return "Could not read cluster configuration";
 		break;
-	case -10:
+	case 9:
 		return "Could not set up logging";
 		break;
-	case -11:
+	case 11:
 		return "Could not dynamically load modules";
 		break;
-	case -12:
+	case 12:
 		return "Could not load and initialise object database";
 		break;
-	case -13:
+	case 13:
 		return "Could not initialise all required services";
 		break;
-	case -14:
+	case 14:
 		return "Out of memory";
+		break;
+	case 15:
+		return "Fatal error";
+		break;
+	case 16:
+		return "Required directory not present /var/lib/corosync.";
+		break;
+	case 17:
+		return "Could not acquire lock";
+		break;
+	case 18:
+		return "Another Corosync instance is already running";
 		break;
 	default:
 		sprintf(reason, "Error, reason code is %d", status);
@@ -172,6 +184,10 @@ int join(commandline_t *comline, char *main_envp[])
 	}
 	if (comline->verbose ^ DEBUG_STARTUP_ONLY) {
 		snprintf(scratch, sizeof(scratch), "CMAN_DEBUG=%d", comline->verbose);
+		envp[envptr++] = strdup(scratch);
+	}
+	if (comline->nostderr_debug) {
+		snprintf(scratch, sizeof(scratch), "CMAN_NOSTDERR_DEBUG=true");
 		envp[envptr++] = strdup(scratch);
 	}
 	if (comline->noconfig_opt) {
